@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <parent>
+    <groupId>io.jcordis</groupId>
+    <artifactId>jcordis-parent</artifactId>
+    <version>0.1.0-SNAPSHOT</version>
+  </parent>
+
+  <artifactId>jcordis-loader</artifactId>
+  <name>jcordis-loader</name>
+  <description>Declarative component loader: Entry tree, config reconciliation, isolation realms</description>
+
+  <dependencies>
+    <dependency>
+      <groupId>io.jcordis</groupId>
+      <artifactId>jcordis-core</artifactId>
+      <version>${project.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>com.fasterxml.jackson.core</groupId>
+      <artifactId>jackson-databind</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>com.fasterxml.jackson.dataformat</groupId>
+      <artifactId>jackson-dataformat-yaml</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.junit.jupiter</groupId>
+      <artifactId>junit-jupiter</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.assertj</groupId>
+      <artifactId>assertj-core</artifactId>
+      <scope>test</scope>
+    </dependency>
+  </dependencies>
+
+  <build>
+    <plugins>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-compiler-plugin</artifactId>
+        <executions>
+          <execution>
+            <id>compile-test-fixtures</id>
+            <phase>process-test-classes</phase>
+            <goals>
+              <goal>compile</goal>
+            </goals>
+            <configuration>
+              <!-- fixture classes are packed into plugin jars only; keeping them
+                   off the host test classpath makes class-isolation verifiable -->
+              <compileSourceRoots>
+                <compileSourceRoot>${project.basedir}/src/test/fixtures</compileSourceRoot>
+              </compileSourceRoots>
+              <outputDirectory>${project.build.directory}/test-fixtures-classes</outputDirectory>
+              <release>${maven.compiler.release}</release>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
+    </plugins>
+  </build>
+</project>
