@@ -176,16 +176,6 @@ public final class Scaffolder {
                   <artifactId>jcordis-loader</artifactId>
                   <version>0.1.0-SNAPSHOT</version>
                 </dependency>
-                <dependency>
-                  <groupId>io.jcordis</groupId>
-                  <artifactId>jcordis-plugin-timer</artifactId>
-                  <version>0.1.0-SNAPSHOT</version>
-                </dependency>
-                <dependency>
-                  <groupId>io.jcordis</groupId>
-                  <artifactId>jcordis-plugin-logger-console</artifactId>
-                  <version>0.1.0-SNAPSHOT</version>
-                </dependency>
               </dependencies>
 
               <build>
@@ -239,11 +229,11 @@ public final class Scaffolder {
                     Loader loader = new Loader(root);
                     root.provide("loader", loader);
                     loader.builtin("@cordisjs/plugin-timer", (ctx, config) -> {
-                        new io.jcordis.timer.TimerService(ctx);
+                        new io.jcordis.core.timer.TimerService(ctx);
                         return null;
                     });
                     loader.builtin("@cordisjs/plugin-logger-console", (ctx, config) -> {
-                        new io.jcordis.logger.console.ConsoleExporter(ctx);
+                        new io.jcordis.core.logger.ConsoleExporter(ctx);
                         return null;
                     });
                     loader.mock("./sample-plugin", new {{pkg}}.SamplePlugin());

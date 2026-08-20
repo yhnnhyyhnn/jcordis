@@ -17,17 +17,12 @@ Java 21 实现的 **Cordis** —— 时空可组合性元框架（Meta-Framework
 
 | 模块 | 说明 |
 |---|---|
-| `jcordis-core` | Context / Fiber 状态机 / EventBus / Registry / Logger / Reflect（服务隔离） |
-| `jcordis-loader` | Entry 树 / 配置同步 / 隔离域 Realm / 插件 jar 加载（`PluginClassLoader`、`loadJar`/`replaceJar`/`unload`） |
-| `jcordis-utils` | effect 跟踪集合 `EffectList`（随 fiber 销毁自动清理） |
-| `jcordis-plugin-timer` | timeout / interval / throttle / debounce 调度服务 |
-| `jcordis-plugin-logger-console` | 控制台日志导出器 |
-| `jcordis-plugin-include` | 配置文件插件（含 patches / 原子写）+ HMR（配置轮询重载 + `JarWatcher` jar 热替换） |
-| `jcordis-plugin-group` | 分组插件 |
+| `jcordis-core` | 核心框架：Context / Fiber 状态机 / EventBus / Registry / Logger（含 ConsoleExporter）/ Reflect（服务隔离）+ `EffectList`（effect 跟踪集合）+ `TimerService`（timeout/interval/throttle/debounce） |
+| `jcordis-loader` | Entry 树 / 配置同步 / 隔离域 Realm / 插件 jar 加载（`PluginClassLoader`、`loadJar`/`replaceJar`/`unload`）+ `include` 子包（配置文件插件 `Include` / `ConfigParser` / HMR `Hmr` / `JarWatcher` jar 热替换）+ 分组标记 |
 | `jcordis-cli` | `Scaffolder` 脚手架引擎 + CLI 入口 |
 | `jcordis-maven-plugin` | Maven 插件：`create` / `create-plugin` / `check` |
 | `jcordis-all` | **聚合 jar**：shade 合并全部运行时模块（除 maven-plugin）为单一 jar，业务系统一个坐标引入 |
-| `examples/*` | hello-world / service-graph / config-app 示例 |
+| `examples/*` | hello-world / service-graph / config-app 示例 + demo-plugin（独立插件示例，不参与 reactor 构建） |
 
 ## 快速开始
 

@@ -22,12 +22,7 @@
 
   <modules>
     <module>jcordis-core</module>
-    <module>jcordis-utils</module>
     <module>jcordis-loader</module>
-    <module>jcordis-plugin-timer</module>
-    <module>jcordis-plugin-logger-console</module>
-    <module>jcordis-plugin-include</module>
-    <module>jcordis-plugin-group</module>
     <module>jcordis-cli</module>
     <module>jcordis-maven-plugin</module>
     <module>jcordis-all</module>

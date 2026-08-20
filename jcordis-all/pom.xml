@@ -22,32 +22,7 @@
     </dependency>
     <dependency>
       <groupId>io.jcordis</groupId>
-      <artifactId>jcordis-utils</artifactId>
-      <version>${project.version}</version>
-    </dependency>
-    <dependency>
-      <groupId>io.jcordis</groupId>
       <artifactId>jcordis-loader</artifactId>
-      <version>${project.version}</version>
-    </dependency>
-    <dependency>
-      <groupId>io.jcordis</groupId>
-      <artifactId>jcordis-plugin-timer</artifactId>
-      <version>${project.version}</version>
-    </dependency>
-    <dependency>
-      <groupId>io.jcordis</groupId>
-      <artifactId>jcordis-plugin-logger-console</artifactId>
-      <version>${project.version}</version>
-    </dependency>
-    <dependency>
-      <groupId>io.jcordis</groupId>
-      <artifactId>jcordis-plugin-include</artifactId>
-      <version>${project.version}</version>
-    </dependency>
-    <dependency>
-      <groupId>io.jcordis</groupId>
-      <artifactId>jcordis-plugin-group</artifactId>
       <version>${project.version}</version>
     </dependency>
     <dependency>
@@ -113,12 +88,7 @@
               <artifactSet>
                 <includes>
                   <include>io.jcordis:jcordis-core</include>
-                  <include>io.jcordis:jcordis-utils</include>
                   <include>io.jcordis:jcordis-loader</include>
-                  <include>io.jcordis:jcordis-plugin-timer</include>
-                  <include>io.jcordis:jcordis-plugin-logger-console</include>
-                  <include>io.jcordis:jcordis-plugin-include</include>
-                  <include>io.jcordis:jcordis-plugin-group</include>
                   <include>io.jcordis:jcordis-cli</include>
                 </includes>
               </artifactSet>

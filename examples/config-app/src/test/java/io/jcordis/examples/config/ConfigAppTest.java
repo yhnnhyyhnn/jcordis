@@ -3,7 +3,7 @@ package io.jcordis.examples.config;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import io.jcordis.core.context.Context;
-import io.jcordis.include.Include;
+import io.jcordis.loader.include.Include;
 import io.jcordis.loader.EntryOptions;
 import io.jcordis.loader.Loader;
 import java.io.IOException;

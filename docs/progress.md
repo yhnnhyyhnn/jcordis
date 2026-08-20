@@ -662,3 +662,40 @@ Tests run: 128, Failures: 0 -- 既有测试（无回归）
 Tests run: 143, Failures: 0 -- 总计
 Reactor: jcordis 13/13 模块 SUCCESS, BUILD SUCCESS
 ```
+
+---
+
+## 模块合并（2026-08-20）
+
+小模块（1-4 个类）无独立模块价值，合并为两个大模块。**模块 14 → 9**，测试 146 全绿（无丢失）。
+
+### 合并映射
+
+| 原模块 | 合并至 | 新位置（包） |
+|---|---|---|
+| jcordis-utils（1 类） | jcordis-core | `io.jcordis.core.util.EffectList` |
+| jcordis-plugin-timer（1 类） | jcordis-core | `io.jcordis.core.timer.TimerService` |
+| jcordis-plugin-logger-console（1 类） | jcordis-core | `io.jcordis.core.logger.ConsoleExporter` |
+| jcordis-plugin-include（4 类） | jcordis-loader | `io.jcordis.loader.include.{Include,ConfigParser,Hmr,JarWatcher}` |
+| jcordis-plugin-group（1 类） | jcordis-loader | 删除——`GroupPlugin` 仅转发 `Loader.GROUP_PLUGIN`，直接使用后者 |
+
+### 保留模块
+
+`jcordis-core` / `jcordis-loader` / `jcordis-cli`（CLI 独立入口）/ `jcordis-maven-plugin`（packaging=maven-plugin 必须独立）/ `jcordis-all` / `examples/*`。
+
+### 连锁更新
+
+| 项 | 变更 |
+|---|---|
+| 根 pom | 模块列表 14 → 9 |
+| jcordis-all | 依赖与 shade artifactSet 收敛为 core/loader/cli；`AggregateJarIT` 断言新类路径 |
+| Scaffolder 模板 | 应用 pom 移除 timer/logger-console 模块依赖（并入 core）；`Index.java` 引用 `io.jcordis.core.timer.TimerService` / `io.jcordis.core.logger.ConsoleExporter` |
+| examples | config-app 移除 include 模块依赖（→ loader），`Include` import 更新 |
+
+### 验证结果
+
+```
+Tests run: 146, Failures: 0 -- 总计（合并不丢测试）
+Reactor: jcordis 9/9 模块 SUCCESS, BUILD SUCCESS
+端到端回归：create 应用（新模板引用）构建 OK + demo-plugin 独立构建 OK
+```

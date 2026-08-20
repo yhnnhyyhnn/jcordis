@@ -22,12 +22,12 @@ class AggregateJarIT {
 
         String[] expectedClasses = {
             "io/jcordis/core/context/ContextImpl.class",
-            "io/jcordis/utils/EffectList.class",
+            "io/jcordis/core/util/EffectList.class",
+            "io/jcordis/core/timer/TimerService.class",
+            "io/jcordis/core/logger/ConsoleExporter.class",
             "io/jcordis/loader/Loader.class",
-            "io/jcordis/timer/TimerService.class",
-            "io/jcordis/logger/console/ConsoleExporter.class",
-            "io/jcordis/include/Hmr.class",
-            "io/jcordis/group/GroupPlugin.class",
+            "io/jcordis/loader/include/Hmr.class",
+            "io/jcordis/loader/include/JarWatcher.class",
             "io/jcordis/cli/Scaffolder.class",
         };
         try (JarFile jarFile = new JarFile(jar.toFile())) {
