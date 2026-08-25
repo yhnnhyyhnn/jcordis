@@ -1,46 +1,82 @@
 # jcordis
 
-Java 21 实现的 **Cordis** —— 时空可组合性元框架（Meta-Framework of Spatiotemporal Composability）。
+<p align="left">
+  English | <a href="README.zh-CN.md">简体中文</a>
+</p>
 
-参考项目：[cordiverse/cordis](https://github.com/cordiverse/cordis)（TypeScript）
+<p align="left">
+  <img alt="Java" src="https://img.shields.io/badge/Java-21-orange">
+  <img alt="JUnit" src="https://img.shields.io/badge/JUnit-5-green">
+  <img alt="License" src="https://img.shields.io/badge/License-Apache--2.0-blue">
+</p>
 
-## 核心特性
+**jcordis** is a Java 21 implementation of **Cordis** — a meta-framework of spatiotemporal composability.
 
-- **时空可组合性**：`ctx.effect()` 注册可逆副作用（时间组合），插件销毁时逆序清理；`ctx.isolate()` / `ctx.intercept()` 构建服务隔离域（空间组合）
-- **事件系统**：emit / bail / serial / parallel / waterfall 五种调度模式，thisArg 过滤
-- **插件生命周期**：Fiber 状态机（依赖 epoch 驱动，注入齐备自动加载、缺失自动卸载）、`restart()` / 配置热更新
-- **Loader 声明式配置**：Entry 树 + 配置 diff 同步（YAML/JSON 经 `ConfigParser` 策略解析）+ 隔离域（`Realm`：`#id` 本地域 / `@label` 共享域）
-- **插件热加载 HMR**：运行时从 jar 动态加载插件（SPI 发现 + 独立 `PluginClassLoader`）、jar 变更热替换（原子替换 + 失败回滚）、完整类卸载
-- **脚手架**：Maven 插件 / CLI 双入口生成应用与插件项目
+Reference project: [cordiverse/cordis](https://github.com/cordiverse/cordis) (TypeScript)
 
-## 模块结构
+## Architecture Overview
 
-| 模块 | 说明 |
-|---|---|
-| `jcordis-core` | 核心框架：Context / Fiber 状态机 / EventBus / Registry / Logger（含 ConsoleExporter）/ Reflect（服务隔离）+ `EffectList`（effect 跟踪集合）+ `TimerService`（timeout/interval/throttle/debounce） |
-| `jcordis-loader` | Entry 树 / 配置同步 / 隔离域 Realm / 插件 jar 加载（`PluginClassLoader`、`loadJar`/`replaceJar`/`unload`）+ `include` 子包（配置文件插件 `Include` / `ConfigParser` / HMR `Hmr` / `JarWatcher` jar 热替换）+ 分组标记 |
-| `jcordis-cli` | `Scaffolder` 脚手架引擎 + CLI 入口 |
-| `jcordis-maven-plugin` | Maven 插件：`create` / `create-plugin` / `check` |
-| `jcordis-all` | **聚合 jar**：shade 合并全部运行时模块（除 maven-plugin）为单一 jar，业务系统一个坐标引入 |
-| `examples/*` | hello-world / service-graph / config-app 示例 + demo-plugin（独立插件示例，不参与 reactor 构建） |
+```
+Scaffolding tools ──generate──> Consumers (business apps / examples / plugin jars)
+                                     │ single Maven coordinate
+                                     ▼
+                           jcordis-all (shaded aggregate jar)
+                                     │ shade merge
+                                     ▼
+          jcordis runtime framework = jcordis-core + jcordis-loader
+                                     │
+                                     ▼
+              Third-party dependencies (SLF4J / Jackson, provided transitively)
+```
 
-## 快速开始
+![jcordis architecture](docs/architecture.png)
+
+> Editable source: [docs/architecture.drawio](docs/architecture.drawio) (open in draw.io to keep editing)
+
+## Core Features
+
+- **Spatiotemporal composability**: `ctx.effect()` registers reversible side effects (temporal composition), cleaned up in reverse order when a plugin is destroyed; `ctx.isolate()` / `ctx.intercept()` build service isolation domains (spatial composition)
+- **Event system**: five dispatch modes — emit / bail / serial / parallel / waterfall — with thisArg filtering
+- **Plugin lifecycle**: Fiber state machine driven by dependency epochs (auto-loads when injections are ready, auto-unloads when missing), `restart()` / hot config updates
+- **Declarative loader**: Entry tree + config diff synchronization (YAML/JSON parsed via `ConfigParser` strategies) + isolation realms (`Realm`: `#id` local / `@label` shared)
+- **Plugin hot reload (HMR)**: runtime plugin loading from jars (SPI discovery + dedicated `PluginClassLoader`), jar hot-swap on change (atomic replacement + rollback on failure), complete class unloading
+- **Scaffolding**: dual entry points (Maven plugin / CLI) to generate application and plugin projects
+
+## Module Structure
+
+| Module | Description | Depends on |
+|---|---|---|
+| `jcordis-core` | Core framework: Context / Fiber state machine / EventBus / Registry / Logger (with ConsoleExporter) / Reflect (service isolation) + `EffectList` (effect-tracking collection) + `TimerService` (timeout/interval/throttle/debounce) | — |
+| `jcordis-loader` | Entry tree / config reconciliation / isolation realms / plugin jar loading (`PluginClassLoader`, `loadJar`/`replaceJar`/`unload`) + `include` subpackage (config-file plugin `Include` / `ConfigParser` / HMR `Hmr` / `JarWatcher` hot-swap) + grouping markers | core |
+| `jcordis-cli` | `Scaffolder` engine + CLI entry point | core |
+| `jcordis-maven-plugin` | Maven plugin: `create` / `create-plugin` / `check` | — |
+| `jcordis-all` | **Aggregate jar**: shades all runtime modules (except maven-plugin) into a single jar — one coordinate for business systems | core + loader + cli |
+| `examples/*` | hello-world / service-graph / config-app examples + demo-plugin (standalone plugin example, not part of the reactor build) | — |
+
+## Requirements
+
+- JDK 21+
+- Maven 3.x
+
+## Quick Start
+
+**Create an application scaffold** (identical to the CLI output):
 
 ```bash
-# 应用脚手架（与 CLI 生成物一致）
 mvn io.jcordis:jcordis-maven-plugin:0.1.0-SNAPSHOT:create -Dname=my-app
+```
 
-# 插件脚手架（内嵌插件契约：jcordis 依赖 provided + SPI 清单 + check goal）
+**Create a plugin scaffold** (embedded plugin contract: jcordis dependency as provided + SPI manifest + check goal):
+
+```bash
 mvn io.jcordis:jcordis-maven-plugin:0.1.0-SNAPSHOT:create-plugin -Dname=demo-plugin
 ```
 
-插件项目产出**干净 jar**（仅插件类 + `META-INF/services/io.jcordis.core.registry.Plugin` 清单），`mvn verify` 自动执行 `check` goal 校验不混入三方库/框架类。
+## Business System Integration
 
-## 业务系统集成
+One coordinate brings in all jcordis modules (core/loader/utils/timer/logger-console/include/group/cli):
 
 ```xml
-<!-- 一个坐标获得全部 jcordis 模块（core/loader/utils/timer/logger-console/include/group/cli）。
-     三方库（jackson/slf4j）不打入聚合 jar，经精简 pom 传递提供 -->
 <dependency>
   <groupId>io.jcordis</groupId>
   <artifactId>jcordis-all</artifactId>
@@ -48,17 +84,28 @@ mvn io.jcordis:jcordis-maven-plugin:0.1.0-SNAPSHOT:create-plugin -Dname=demo-plu
 </dependency>
 ```
 
-## 文档
+Third-party libraries (jackson/slf4j) are not shaded into the aggregate jar; they are provided transitively via the reduced pom.
 
-- [Cordis 源码分析报告](./docs/cordis-analysis.md) —— 参考项目完整架构分析
-- [Java 21 移植路线图](./docs/roadmap.md) —— 分阶段移植计划
-- [进度记录](./docs/progress.md) —— 实现里程碑与验证结果
-- [设计模式应用](./docs/patterns.md) —— 23 种 GoF 模式应用清单
-- [插件热加载设计](./docs/hmr-design.md) —— ClassLoader 热替换、卸载语义、依赖模型（传递依赖 + 业务 BOM）
-- [兼容性对照](./docs/compatibility.md) —— 与 cordis API 映射
+## Plugin Development
 
-## 构建与测试
+Plugin projects produce a **clean jar**: only plugin classes + a `META-INF/services/io.jcordis.core.registry.Plugin` manifest.
+
+- `mvn verify` automatically runs the `check` goal, verifying that no third-party / framework classes are mixed into the plugin jar
+- At runtime the plugin is loaded in isolation by `PluginClassLoader`, with jar hot-swap and complete class unloading (see the [HMR design doc](docs/hmr-design.md), in Chinese)
+
+## Documentation
+
+| Document | Description |
+|---|---|
+| [Cordis source analysis](docs/cordis-analysis.md) | Full architecture analysis of the reference project (Chinese) |
+| [Java 21 porting roadmap](docs/roadmap.md) | Phased porting plan (Chinese) |
+| [Progress log](docs/progress.md) | Implementation milestones and verification results (Chinese) |
+| [Design patterns](docs/patterns.md) | 23 GoF patterns applied (Chinese) |
+| [HMR design](docs/hmr-design.md) | ClassLoader hot-swap, unload semantics, dependency model (Chinese) |
+| [Compatibility matrix](docs/compatibility.md) | cordis API mapping (Chinese) |
+
+## Build & Test
 
 ```bash
-mvn clean verify   # 14/14 模块，146 测试全绿
+mvn clean verify   # 14/14 modules, 146 tests green
 ```

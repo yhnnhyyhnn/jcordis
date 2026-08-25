@@ -84,7 +84,7 @@ Reactor: jcordis 9/9 模块 SUCCESS, BUILD SUCCESS
 #### 下一步（W3）
 
 - `events/EventBus`：五种派发模式（emit / parallel / serial / bail / waterfall）+ internal 事件。
-- 对照参考：`D:\code\git\cordis\packages\core\src\events.ts`。
+- 对照参考（[`cordiverse/cordis`](https://github.com/cordiverse/cordis) 仓库内路径）：`packages/core/src/events.ts`。
 
 ---
 
@@ -135,7 +135,7 @@ Reactor: jcordis 9/9 模块 SUCCESS, BUILD SUCCESS
 #### 下一步（W4）
 
 - `context/Context` 剩余 API：`plugin()`/`inject()`/`runtime()`、registry 体系（`internal/plugin`、`internal/status` 事件消费方）。
-- 对照参考：`D:\code\git\cordis\packages\core\src\registry.ts`、`D:\code\git\cordis\packages\core\src\fiber.ts`。
+- 对照参考：`packages/core/src/registry.ts`、`packages/core/src/fiber.ts`。
 
 ---
 
@@ -194,7 +194,7 @@ Reactor: jcordis 9/9 模块 SUCCESS, BUILD SUCCESS
 #### 下一步（W5）
 
 - Logger + DisposableList + 集成演示（`internal/status` 消费、端到端插件加载演示）。
-- 对照参考：`D:\code\git\cordis\packages\core\src\logger.ts`、`D:\code\git\cordis\packages\core\tests\logger.spec.ts`。
+- 对照参考：`packages/core/src/logger.ts`、`packages/core/tests/logger.spec.ts`。
 
 ---
 
@@ -246,7 +246,7 @@ Reactor: jcordis 9/9 模块 SUCCESS, BUILD SUCCESS
 #### 下一步（M3 → Loader 阶段）
 
 - Phase 2 完成（W1-W5 全部 ✅，65 测试）。进入 **Phase 3：Loader 服务**——声明式插件树、配置调和（resolveConfig/restart/epoch 补全）、internal/status 消费、SPI 插件加载。
-- 对照参考：`D:\code\git\cordis\packages\loader\src`。
+- 对照参考：`packages/loader/src`。
 
 ---
 
@@ -300,7 +300,7 @@ Reactor: jcordis 9/9 模块 SUCCESS, BUILD SUCCESS
 #### 下一步（Phase 4）
 
 - 周边插件 + 工具：timer / logger-console / include / group 插件模块（依赖仅 core/loader）。
-- 对照参考：`D:\code\git\cordis\packages\core\src\logger.ts`、`D:\code\git\cordis\packages\loader`。
+- 对照参考：`packages/core/src/logger.ts`、`packages/loader`。
 
 ---
 
@@ -352,7 +352,7 @@ Reactor: jcordis 9/9 模块 SUCCESS, BUILD SUCCESS
 #### 下一步（Phase 5，可选）
 
 - CLI 与脚手架：`jcordis create my-app` 交互式生成（或 Maven Archetype）。
-- 对照参考：`D:\code\git\cordis\packages\create-cordis`。
+- 对照参考：`packages/create-cordis`。
 
 ---
 
@@ -396,7 +396,7 @@ Reactor: jcordis 9/9 模块 SUCCESS, BUILD SUCCESS
 #### 下一步（Phase 6，可选）
 
 - HMR 等价物（方案 A：容器重建）——监听配置变更 → 重建 Context + 重载插件 → 原子切换。
-- 对照参考：`D:\code\git\cordis\packages\hmr`。
+- 对照参考：`packages/hmr`。
 
 ---
 
@@ -437,7 +437,7 @@ Reactor: jcordis 9/9 模块 SUCCESS, BUILD SUCCESS
 #### 下一步（Phase 7）
 
 - 文档、示例与发布：3 个示例应用（hello-world/service-graph/config-app）、`docs/compatibility.md` 行为差异对照表、发布准备。
-- 对照参考：`D:\code\git\cordis\docs`、`D:\code\git\cordis\packages\create`。
+- 对照参考：`docs`、`packages/create`。
 
 ---
 
@@ -533,7 +533,7 @@ Reactor: jcordis 12/12 模块 SUCCESS, BUILD SUCCESS
 
 ## 缺口补齐（2026-08-20）
 
-对照参考项目 `D:\code\git\cordis` 复核，确认并补齐三项真实缺口：
+对照参考项目 `[`cordiverse/cordis`](https://github.com/cordiverse/cordis)` 复核，确认并补齐三项真实缺口：
 
 ### 1. `jcordis-utils` 空壳模块 → `List<T>` 移植
 

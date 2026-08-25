@@ -1,0 +1,154 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mxfile host="drawio" version="26.0.0">
+  <diagram name="jcordis-architecture">
+    <mxGraphModel dx="1400" dy="900" grid="1" gridSize="10" pageWidth="1440" pageHeight="1620">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="2" value="jcordis 系统架构 — Java 21 Cordis 元框架（时空可组合性）" style="text;html=1;align=center;verticalAlign=middle;fontSize=20;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="310" y="20" width="500" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="3" value="开发脚手架工具 Scaffolding" style="swimlane;startSize=30;whiteSpace=wrap;html=1;collapsible=0;fillColor=#ffe6cc;strokeColor=#d79b00;" vertex="1" parent="1">
+          <mxGeometry x="60" y="100" width="1000" height="170" as="geometry" />
+        </mxCell>
+        <mxCell id="4" value="jcordis-cli&#xa;Scaffolder 脚手架引擎 + CLI 入口" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#d79b00;" vertex="1" parent="3">
+          <mxGeometry x="40" y="50" width="380" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="5" value="jcordis-maven-plugin&#xa;create / create-plugin / check goals" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#d79b00;" vertex="1" parent="3">
+          <mxGeometry x="560" y="50" width="380" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="6" value="使用方 Applications" style="swimlane;startSize=30;whiteSpace=wrap;html=1;collapsible=0;fillColor=#f5f5f5;strokeColor=#666666;" vertex="1" parent="1">
+          <mxGeometry x="60" y="360" width="1000" height="170" as="geometry" />
+        </mxCell>
+        <mxCell id="7" value="业务系统&#xa;Host Application" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;" vertex="1" parent="6">
+          <mxGeometry x="40" y="50" width="280" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="8" value="examples 示例应用&#xa;hello-world / service-graph / config-app" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#666666;" vertex="1" parent="6">
+          <mxGeometry x="360" y="50" width="280" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="9" value="插件 jar（构件）&#xa;干净 jar + SPI 服务清单" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;" vertex="1" parent="6">
+          <mxGeometry x="680" y="50" width="280" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="10" value="jcordis-all（发布产物）&#xa;Shade 聚合 jar：一个坐标引入全部运行时模块" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontStyle=1" vertex="1" parent="1">
+          <mxGeometry x="330" y="620" width="460" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="11" value="jcordis 运行时框架 Runtime Framework" style="swimlane;startSize=30;whiteSpace=wrap;html=1;collapsible=0;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="1">
+          <mxGeometry x="60" y="790" width="1000" height="520" as="geometry" />
+        </mxCell>
+        <mxCell id="12" value="jcordis-core 核心框架" style="swimlane;startSize=30;whiteSpace=wrap;html=1;collapsible=0;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="11">
+          <mxGeometry x="30" y="50" width="460" height="430" as="geometry" />
+        </mxCell>
+        <mxCell id="13" value="Context&#xa;effect() 可逆副作用&#xa;isolate() / intercept()" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#6c8ebf;" vertex="1" parent="12">
+          <mxGeometry x="20" y="45" width="210" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="14" value="Fiber 状态机&#xa;epoch 驱动生命周期&#xa;restart / 热更新" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#6c8ebf;" vertex="1" parent="12">
+          <mxGeometry x="250" y="45" width="190" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="15" value="EventBus&#xa;emit / bail / serial&#xa;parallel / waterfall" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#6c8ebf;" vertex="1" parent="12">
+          <mxGeometry x="20" y="135" width="210" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="16" value="Registry / Service&#xa;SPI 插件注册" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#6c8ebf;" vertex="1" parent="12">
+          <mxGeometry x="250" y="135" width="190" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="17" value="Logger&#xa;LoggerService / Exporter&#xa;ConsoleExporter" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#6c8ebf;" vertex="1" parent="12">
+          <mxGeometry x="20" y="225" width="210" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="18" value="Reflect&#xa;服务隔离代理" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#6c8ebf;" vertex="1" parent="12">
+          <mxGeometry x="250" y="225" width="190" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="19" value="TimerService&#xa;timeout / interval&#xa;throttle / debounce" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#6c8ebf;" vertex="1" parent="12">
+          <mxGeometry x="20" y="315" width="210" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="20" value="EffectList / Disposable&#xa;可逆副作用跟踪集合" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#6c8ebf;" vertex="1" parent="12">
+          <mxGeometry x="250" y="315" width="190" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="21" value="jcordis-loader 声明式装配" style="swimlane;startSize=30;whiteSpace=wrap;html=1;collapsible=0;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="11">
+          <mxGeometry x="550" y="50" width="430" height="430" as="geometry" />
+        </mxCell>
+        <mxCell id="22" value="Entry 树&#xa;EntryTree / Entry / EntryGroup / Command" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#6c8ebf;" vertex="1" parent="21">
+          <mxGeometry x="20" y="45" width="390" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="23" value="隔离域 Realm&#xa;GlobalRealm 共享域 / LocalRealm #id 本地域" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#6c8ebf;" vertex="1" parent="21">
+          <mxGeometry x="20" y="135" width="390" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="24" value="PluginClassLoader&#xa;loadJar / replaceJar / unload 完整类卸载" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#6c8ebf;" vertex="1" parent="21">
+          <mxGeometry x="20" y="225" width="390" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="25" value="include 子包&#xa;Include / ConfigParser / Hmr / JarWatcher" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#6c8ebf;" vertex="1" parent="21">
+          <mxGeometry x="20" y="315" width="390" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="26" value="三方依赖 Third-party（不打入聚合 jar，经精简 pom 传递提供）" style="swimlane;startSize=30;whiteSpace=wrap;html=1;collapsible=0;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="1">
+          <mxGeometry x="60" y="1400" width="1000" height="150" as="geometry" />
+        </mxCell>
+        <mxCell id="27" value="SLF4J API&#xa;日志门面" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#82b366;" vertex="1" parent="26">
+          <mxGeometry x="60" y="55" width="340" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="28" value="Jackson Databind + YAML&#xa;配置文件解析" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#82b366;" vertex="1" parent="26">
+          <mxGeometry x="560" y="55" width="340" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="29" value="图例 Legend" style="rounded=0;whiteSpace=wrap;html=1;fillColor=none;strokeColor=#666666;verticalAlign=top;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="1180" y="850" width="200" height="170" as="geometry" />
+        </mxCell>
+        <mxCell id="30" value="" style="rounded=0;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="29">
+          <mxGeometry x="15" y="35" width="30" height="16" as="geometry" />
+        </mxCell>
+        <mxCell id="31" value="运行时框架模块" style="text;html=1;align=left;verticalAlign=middle;" vertex="1" parent="29">
+          <mxGeometry x="55" y="33" width="130" height="20" as="geometry" />
+        </mxCell>
+        <mxCell id="32" value="" style="rounded=0;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;" vertex="1" parent="29">
+          <mxGeometry x="15" y="59" width="30" height="16" as="geometry" />
+        </mxCell>
+        <mxCell id="33" value="开发脚手架工具" style="text;html=1;align=left;verticalAlign=middle;" vertex="1" parent="29">
+          <mxGeometry x="55" y="57" width="130" height="20" as="geometry" />
+        </mxCell>
+        <mxCell id="34" value="" style="rounded=0;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;" vertex="1" parent="29">
+          <mxGeometry x="15" y="83" width="30" height="16" as="geometry" />
+        </mxCell>
+        <mxCell id="35" value="使用方（业务系统）" style="text;html=1;align=left;verticalAlign=middle;" vertex="1" parent="29">
+          <mxGeometry x="55" y="81" width="130" height="20" as="geometry" />
+        </mxCell>
+        <mxCell id="36" value="" style="rounded=0;html=1;fillColor=#fff2cc;strokeColor=#d6b656;" vertex="1" parent="29">
+          <mxGeometry x="15" y="107" width="30" height="16" as="geometry" />
+        </mxCell>
+        <mxCell id="37" value="发布产物 / 构件" style="text;html=1;align=left;verticalAlign=middle;" vertex="1" parent="29">
+          <mxGeometry x="55" y="105" width="130" height="20" as="geometry" />
+        </mxCell>
+        <mxCell id="38" value="" style="rounded=0;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="29">
+          <mxGeometry x="15" y="131" width="30" height="16" as="geometry" />
+        </mxCell>
+        <mxCell id="39" value="三方依赖" style="text;html=1;align=left;verticalAlign=middle;" vertex="1" parent="29">
+          <mxGeometry x="55" y="129" width="130" height="20" as="geometry" />
+        </mxCell>
+        <mxCell id="40" value="生成应用 / 插件项目脚手架" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;fontSize=11;labelBackgroundColor=#ffffff;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="3" target="6">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="41" value="Maven 单一坐标引入" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;fontSize=11;labelBackgroundColor=#ffffff;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.15;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="7" target="10">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="42" value="shade 合并打包" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;dashed=1;fontSize=11;labelBackgroundColor=#ffffff;exitX=0.75;exitY=1;exitDx=0;exitDy=0;entryX=0.25;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="10" target="21">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="43" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;dashed=1;exitX=0.25;exitY=1;exitDx=0;exitDy=0;entryX=0.75;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="10" target="12">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="44" value="SPI 发现 · jar 热加载 / HMR" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;fontSize=11;labelBackgroundColor=#ffffff;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="9" target="24">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="1120" y="450" />
+              <mxPoint x="1120" y="1100" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="45" value="基于核心抽象构建" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;fontSize=11;labelBackgroundColor=#ffffff;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="12" target="21">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="46" value="YAML / JSON 解析" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;fontSize=11;labelBackgroundColor=#ffffff;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="21" target="28">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="47" value="日志输出" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;fontSize=11;labelBackgroundColor=#ffffff;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="12" target="27">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

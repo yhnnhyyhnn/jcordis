@@ -1,6 +1,6 @@
 # Cordis 源码分析报告
 
-> 分析对象：`D:\code\git\cordis`（TypeScript monorepo，v4.0.0-rc.8）
+> 分析对象：`[`cordiverse/cordis`](https://github.com/cordiverse/cordis)`（TypeScript monorepo，v4.0.0-rc.8）
 > 分析目的：为 jcordis（Java 21 移植项目）提供架构参考
 > 分析日期：2026-08-19
 
