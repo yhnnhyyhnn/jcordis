@@ -6,9 +6,7 @@ import io.jcordis.core.context.Context;
 import io.jcordis.core.fiber.Fiber;
 import io.jcordis.core.fiber.FiberState;
 import io.jcordis.core.registry.Plugin;
-import io.jcordis.loader.fixture.SamplePlugin;
 import java.io.IOException;
-import java.net.URISyntaxException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -17,33 +15,63 @@ import java.util.jar.JarEntry;
 import java.util.jar.JarOutputStream;
 import org.junit.jupiter.api.Test;
 
-/** Translates Cordis loader jar loading: SPI discovery, runtime registration, unload. */
+/**
+ * Translates Cordis loader jar loading: SPI discovery scoped to the jar's own
+ * class loader, runtime registration, unload.
+ */
 class PluginJarTest {
+
+    private static final String SAMPLE = "io.jcordis.fixture.SamplePlugin";
+    private static final String ISOLATED = "io.jcordis.fixture.IsolatedPlugin";
+
+    @Test
+    void hostClasspathPlugin_shouldNotShadowUploadedJar() throws Exception {
+        // simulate a plugin jar (demo-plugin) on the host classpath: its SPI
+        // manifest is reachable through the parent class loader
+        Path serviceDir = Paths.get("target", "test-classes", "META-INF", "services");
+        Files.createDirectories(serviceDir);
+        Path serviceFile = serviceDir.resolve("io.jcordis.core.registry.Plugin");
+        Files.writeString(serviceFile, "io.jcordis.loader.fixture.SamplePlugin\n", StandardCharsets.UTF_8);
+        try {
+            // an uploaded jar declares its own plugin — it must win over the host one
+            Path jar = buildJar("uploaded-plugin.jar", ISOLATED);
+            Loader loader = new Loader(Context.create());
+            Plugin plugin = loader.loadJar(jar, "uploaded");
+
+            assertThat(plugin).isNotNull();
+            assertThat(plugin.getClass().getName()).isEqualTo(ISOLATED);
+            loader.unload("uploaded");
+        } finally {
+            Files.deleteIfExists(serviceFile);
+        }
+    }
 
     @Test
     void loadJar_shouldDiscoverAndRunPlugin() throws Exception {
         Context root = Context.create();
         Loader loader = new Loader(root);
-        Path jar = buildJar("sample-plugin.jar", "io.jcordis.loader.fixture.SamplePlugin");
+        Path jar = buildJar("sample-plugin.jar", SAMPLE);
 
         Plugin plugin = loader.loadJar(jar, "sample-plugin");
         assertThat(plugin).isNotNull();
+        assertThat(plugin.getClass().getName()).isEqualTo(SAMPLE);
 
-        SamplePlugin.calls.set(0);
+        System.clearProperty("jcordis.probe.sample");
         EntryOptions options = new EntryOptions();
         options.name = "sample-plugin";
         String id = loader.create(options, null);
         Fiber fiber = loader.expectFiber(id);
         assertThat(fiber).isNotNull();
         assertThat(fiber.state()).isEqualTo(FiberState.ACTIVE);
-        assertThat(SamplePlugin.calls).hasValue(1);
+        assertThat(System.getProperty("jcordis.probe.sample")).isEqualTo("loaded");
+        loader.unload("sample-plugin");
     }
 
     @Test
     void unload_shouldDisposeFibersAndReleaseJar() throws Exception {
         Context root = Context.create();
         Loader loader = new Loader(root);
-        Path jar = buildJar("sample-plugin.jar", "io.jcordis.loader.fixture.SamplePlugin");
+        Path jar = buildJar("sample-plugin.jar", SAMPLE);
         loader.loadJar(jar, "sample-plugin");
         EntryOptions options = new EntryOptions();
         options.name = "sample-plugin";
@@ -62,8 +90,8 @@ class PluginJarTest {
     void twoJars_shouldRegisterIndependently() throws Exception {
         Context root = Context.create();
         Loader loader = new Loader(root);
-        Path jarA = buildJar("a-plugin.jar", "io.jcordis.loader.fixture.SamplePlugin");
-        Path jarB = buildJar("b-plugin.jar", "io.jcordis.loader.fixture.SamplePlugin");
+        Path jarA = buildJar("a-plugin.jar", SAMPLE);
+        Path jarB = buildJar("b-plugin.jar", SAMPLE);
 
         loader.loadJar(jarA, "a");
         loader.loadJar(jarB, "b");
@@ -75,18 +103,19 @@ class PluginJarTest {
         b.name = "b";
         assertThat(loader.expectFiber(loader.create(a, null))).isNotNull();
         assertThat(loader.expectFiber(loader.create(b, null))).isNotNull();
+        loader.unload("a");
+        loader.unload("b");
     }
 
-    /** Packs the given classes (from test-classes) plus an SPI manifest into a jar. */
-    private static Path buildJar(String jarName, String... serviceClasses) throws IOException, URISyntaxException {
+    /** Packs fixture classes (from test-fixtures-classes) plus an SPI manifest into a jar. */
+    private static Path buildJar(String jarName, String... serviceClasses) throws IOException {
         Path jar = Files.createTempFile(jarName, ".jar");
-        Path testClasses = Paths.get(
-                SamplePlugin.class.getProtectionDomain().getCodeSource().getLocation().toURI());
+        Path fixtureClasses = Paths.get("target", "test-fixtures-classes");
         try (JarOutputStream out = new JarOutputStream(Files.newOutputStream(jar))) {
             for (String className : serviceClasses) {
                 String resource = className.replace('.', '/') + ".class";
                 out.putNextEntry(new JarEntry(resource));
-                Files.copy(testClasses.resolve(resource), out);
+                Files.copy(fixtureClasses.resolve(resource), out);
                 out.closeEntry();
             }
             out.putNextEntry(new JarEntry("META-INF/services/io.jcordis.core.registry.Plugin"));

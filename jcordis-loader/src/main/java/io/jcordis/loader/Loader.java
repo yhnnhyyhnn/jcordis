@@ -4,12 +4,15 @@ import io.jcordis.core.context.Context;
 import io.jcordis.core.event.EventOptions;
 import io.jcordis.core.fiber.Fiber;
 import io.jcordis.core.registry.Plugin;
+import java.io.BufferedReader;
 import java.io.IOException;
+import java.io.InputStreamReader;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
-import java.util.Iterator;
 import java.util.Map;
-import java.util.ServiceLoader;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.jar.JarEntry;
+import java.util.jar.JarFile;
 
 /**
  * The loader service, mirroring Cordis's {@code Loader}.
@@ -183,13 +186,45 @@ public class Loader extends EntryTree {
         }
     }
 
+    /**
+     * Discovers the plugin declared by {@code jar} itself. Only providers
+     * listed in the jar's own SPI manifest and loaded by its own class loader
+     * count: {@code ServiceLoader} would also enumerate the host classpath's
+     * manifests (e.g. a plugin jar added as a regular dependency), which could
+     * shadow the uploaded plugin.
+     */
     private static Plugin discover(PluginClassLoader classLoader, Path jar) {
-        ServiceLoader<Plugin> services = ServiceLoader.load(Plugin.class, classLoader);
-        Iterator<Plugin> iterator = services.iterator();
-        if (!iterator.hasNext()) {
-            throw new IllegalArgumentException("no Plugin implementation in " + jar);
+        String service = "META-INF/services/io.jcordis.core.registry.Plugin";
+        try (JarFile jarFile = new JarFile(jar.toFile())) {
+            JarEntry entry = jarFile.getJarEntry(service);
+            if (entry == null) {
+                throw new IllegalArgumentException("no Plugin implementation in " + jar);
+            }
+            try (BufferedReader reader = new BufferedReader(
+                    new InputStreamReader(jarFile.getInputStream(entry), StandardCharsets.UTF_8))) {
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    line = line.trim();
+                    if (line.isEmpty() || line.startsWith("#")) continue;
+                    Plugin plugin = instantiate(classLoader, line);
+                    if (plugin != null) return plugin;
+                }
+            }
+        } catch (IOException e) {
+            throw new IllegalArgumentException("cannot read SPI manifest of " + jar, e);
         }
-        return iterator.next();
+        throw new IllegalArgumentException("no Plugin implementation in " + jar);
+    }
+
+    private static Plugin instantiate(PluginClassLoader classLoader, String className) {
+        try {
+            Class<?> clazz = Class.forName(className, false, classLoader);
+            if (clazz.getClassLoader() != classLoader) return null;
+            Object instance = clazz.getDeclaredConstructor().newInstance();
+            return instance instanceof Plugin plugin ? plugin : null;
+        } catch (ReflectiveOperationException | LinkageError e) {
+            return null;
+        }
     }
 
     private static void closeQuietly(PluginClassLoader classLoader) {
