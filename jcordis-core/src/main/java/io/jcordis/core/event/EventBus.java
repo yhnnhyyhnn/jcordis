@@ -141,13 +141,9 @@ public final class EventBus {
     }
 
     private boolean unregister(List<Hook> target, EventHandler callback) {
-        for (int i = 0; i < target.size(); i++) {
-            if (target.get(i).callback() == callback) {
-                target.remove(i);
-                return true;
-            }
-        }
-        return false;
+        // CopyOnWriteArrayList.removeIf is internally locked and atomic — a
+        // manual index-based remove races concurrent removals (IndexOutOfBounds)
+        return target.removeIf(hook -> hook.callback() == callback);
     }
 
     // ----- dispatch -----

@@ -45,7 +45,13 @@ public final class FiberImpl implements Fiber {
     private final AtomicBoolean disposed = new AtomicBoolean(false);
     private final Map<String, List<EventHandler>> hooks = new ConcurrentHashMap<>();
     private final Map<String, Object> inject = new HashMap<>();
-    private final Map<String, Impl> store = new HashMap<>();
+    /**
+     * Dependency resolution cache. Concurrent: providers may notify (and thus
+     * re-check) consumers from arbitrary threads, so concurrent checkImpl()
+     * writes and refresh() reads must be safe.
+     */
+    private final Map<String, Impl> store = new ConcurrentHashMap<>();
+
     private final PluginRuntime runtime;
 
     /**

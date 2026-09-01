@@ -36,11 +36,12 @@ Scaffolding tools ──generate──> Consumers (business apps / examples / pl
 ## Core Features
 
 - **Spatiotemporal composability**: `ctx.effect()` registers reversible side effects (temporal composition), cleaned up in reverse order when a plugin is destroyed; `ctx.isolate()` / `ctx.intercept()` build service isolation domains (spatial composition)
-- **Event system**: five dispatch modes — emit / bail / serial / parallel / waterfall — with thisArg filtering
-- **Plugin lifecycle**: Fiber state machine driven by dependency epochs (auto-loads when injections are ready, auto-unloads when missing), `restart()` / hot config updates
-- **Declarative loader**: Entry tree + config diff synchronization (YAML/JSON parsed via `ConfigParser` strategies) + isolation realms (`Realm`: `#id` local / `@label` shared)
-- **Plugin hot reload (HMR)**: runtime plugin loading from jars (SPI discovery + dedicated `PluginClassLoader`), jar hot-swap on change (atomic replacement + rollback on failure), complete class unloading
+- **Event system**: five dispatch modes — emit / bail / serial / parallel / waterfall — with thisArg filtering; internal waterfalls (`internal/get`, `internal/set`) allow intercepting service access, `internal/status` reports fiber state transitions
+- **Plugin lifecycle**: Fiber state machine driven by dependency epochs (auto-loads when injections are ready, auto-unloads when missing), `restart()` / hot config updates, `getEffects()` introspection; failed bodies only recover through `update()`; async bodies (returning `CompletableFuture`) collect disposables on completion and never leak when the fiber was torn down first
+- **Declarative loader**: Entry tree + config diff synchronization (YAML/JSON parsed via `ConfigParser` strategies) + isolation realms (`Realm`: `#id` local / `@label` shared, garbage-collected when unreferenced) + entry `inject` merge, `await` readiness gating, `transfer(id, parent)` across groups, `locate()`
+- **Plugin hot reload (HMR)**: runtime plugin loading from jars (SPI discovery + dedicated `PluginClassLoader`), jar hot-swap on change (atomic replacement + rollback on failure), complete class unloading; config-file hot reload via `Hmr` (see the `examples/hmr-app` demo)
 - **Scaffolding**: dual entry points (Maven plugin / CLI) to generate application and plugin projects
+- **Concurrency-safe**: per-fiber monitor lock (snapshot-and-dispose, never holding the lock into user callbacks), atomic service registration (`putIfAbsent`), thread-safe effect collections and dependency caches — see [Concurrency Model](#concurrency-model)
 
 ## Module Structure
 
@@ -132,5 +133,5 @@ Plugin projects produce a **clean jar**: only plugin classes + a `META-INF/servi
 ## Build & Test
 
 ```bash
-mvn clean verify   # 10/10 modules, 190 tests green
+mvn clean verify   # 10/10 modules, 194 tests green
 ```

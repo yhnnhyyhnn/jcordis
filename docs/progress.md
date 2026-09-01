@@ -1034,3 +1034,36 @@ Tests run: 190, Failures: 0 -- 总计（ConcurrencyTest +5，LoaderTransferTest 
 Reactor: jcordis 10/10 模块 SUCCESS, BUILD SUCCESS
 mvn -Pformat spotless:check -- BUILD SUCCESS
 ```
+
+---
+
+## 推进：依赖响应压力测试 + EventBus 并发缺陷 + 架构图导出（2026-08-27）
+
+### 1. 依赖响应并发修复与强化（第 2 项）
+
+| 缺陷 | 修复 |
+|---|---|
+| `FiberImpl.store`（依赖缓存）是 HashMap，notify 线程可并发 checkImpl 写 + refresh 读 | 改 `ConcurrentHashMap`（弱一致迭代足够） |
+| **`EventBus.unregister` 手写"遍历+remove"在并发下 COWAL 越界**（压力测试实测 `Index 513 out of bounds for length 512`） | 改 `CopyOnWriteArrayList.removeIf`（JDK 内部持锁、原子、返回是否移除） |
+
+| 测试 | 覆盖 |
+|---|---|
+| `NotifyStressTest`（4 例） | 并发 provide 恰一赢家且消费者解析到赢家值 / 依赖链（x→y）并发传播 / 隔离域并发路由（@a/@b 各见其赢家）/ EventBus 混合 on/emit/dispose 流量 |
+
+稳定性：NotifyStressTest + ConcurrencyTest + FiberAsyncTest + EventBusTest 连续 3 轮全绿。
+
+### 2. README 功能清单补全（第 3 项）
+
+Core Features 段补：内部事件瀑布（internal/get+set、internal/status）、异步 body 完成语义（不泄漏）、realm GC、entry inject 合并、await 门控、transfer/locate、并发安全（Monitor/putIfAbsent/线程安全集合）。
+
+### 3. 架构图 PNG 重新导出（第 4 项）
+
+`drawio-headless`（Rust 渲染器，npx）将 `docs/architecture.drawio` 渲染为 `docs/architecture.png`（1413×1602 RGBA），hmr-app 节点已反映在图中。
+
+### 验证结果
+
+```
+Tests run: 194, Failures: 0 -- 总计（NotifyStressTest +4）
+Reactor: jcordis 10/10 模块 SUCCESS, BUILD SUCCESS
+mvn -Pformat spotless:check -- BUILD SUCCESS
+```
