@@ -1134,3 +1134,35 @@ Tests run: 198, Failures: 0 -- 总计（HmrConcurrencyTest +1，JarWatcherConcur
 Reactor: jcordis 10/10 模块 SUCCESS, BUILD SUCCESS
 mvn -Pformat spotless:check -- BUILD SUCCESS
 ```
+
+---
+
+## 推进：fixture 配置去重 + JarWatcher 有序关闭 + 示例可运行化（2026-08-27）
+
+### 1. fixture 编译配置提取到父 POM（第 2 项）
+
+`compile-test-fixtures` compiler execution 从 jcordis-loader 与 examples/hmr-app 两份重复配置提取到父 POM `<build><plugins>`（路径用 `${project.basedir}`/`${project.build.directory}`，天然 per-module）；无 `src/test/fixtures` 的模块为无害 no-op（实测全量构建通过）。
+
+### 2. JarWatcher 有序关闭（stop 的 flaky 修复）
+
+| 项 | 内容 |
+|---|---|
+| 问题 | `stop()` 只置 running + close watchService，WatchService 事件线程可能仍在处理已 poll 的 MODIFY → in-flight `replaceJar` 持 jar 句柄 → Windows 上 @TempDir 删除失败（并发测试偶发复现） |
+| 修复 | `stop()` 保存并 **interrupt + join(1000)** 工作线程：所有 in-flight 事件处理完成后才返回，teardown 后绝无句柄残留 |
+| 验证 | JarWatcherConcurrencyTest + JarWatcherTest 连续 5 轮全绿 |
+
+### 3. 示例可运行化（第 3 项）
+
+| 示例 | 增强 |
+|---|---|
+| hello-world | main 接入 ConsoleExporter + Loader（声明式加载 + 移除演示）；pom 加 exec 插件；实测输出 `hello world from jcordis` → `goodbye` |
+| service-graph | 新增 `ServiceGraphApp` main（Loader 驱动：database 提供服务 → app 声明 inject 依赖 → 移除 database → app 依赖响应卸载为 PENDING）；pom 加 loader 依赖 + exec 插件；实测 `connections = 1` → `state = PENDING` |
+| README | 示例表更新运行方式（hello-world/service-graph 改 exec:java） |
+
+### 验证结果
+
+```
+Tests run: 198, Failures: 0 -- 总计（无新增测试，示例运行端到端验证）
+Reactor: jcordis 10/10 模块 SUCCESS, BUILD SUCCESS
+mvn -Pformat spotless:check -- BUILD SUCCESS
+```

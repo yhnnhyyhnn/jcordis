@@ -38,6 +38,8 @@ public final class JarWatcher implements Runnable {
 
     /** Created on the start thread, closed on stop — visible across threads. */
     private volatile WatchService watchService;
+    /** The polling thread, joined on stop so no in-flight handle runs after teardown. */
+    private volatile Thread worker;
 
     public JarWatcher(Loader loader, Path dir) {
         this.loader = loader;
@@ -66,11 +68,16 @@ public final class JarWatcher implements Runnable {
         }
         Thread thread = new Thread(this, "jcordis-jar-watcher");
         thread.setDaemon(true);
+        this.worker = thread;
         thread.start();
         return () -> stop();
     }
 
-    /** Stops watching and releases the watch service. */
+    /**
+     * Stops watching, then waits for the worker to finish its current batch:
+     * no in-flight {@code replaceJar} may hold the jar handle after teardown
+     * (otherwise deleting the jar file fails on Windows).
+     */
     public void stop() {
         running.set(false);
         if (watchService != null) {
@@ -78,6 +85,15 @@ public final class JarWatcher implements Runnable {
                 watchService.close();
             } catch (IOException e) {
                 // nothing to recover from a failed watch close
+            }
+        }
+        Thread thread = worker;
+        if (thread != null && thread != Thread.currentThread()) {
+            thread.interrupt();
+            try {
+                thread.join(1000);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
             }
         }
     }

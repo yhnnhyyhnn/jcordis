@@ -77,8 +77,8 @@ mvn io.jcordis:jcordis-maven-plugin:0.1.0-SNAPSHOT:create-plugin -Dname=demo-plu
 
 | Example | Demonstrates | Run |
 |---|---|---|
-| `examples/hello-world` | minimal plugin lifecycle | `mvn -pl examples/hello-world test` |
-| `examples/service-graph` | service provide / dependency / isolation | `mvn -pl examples/service-graph test` |
+| `examples/hello-world` | minimal plugin lifecycle (load/unload) | `mvn -pl examples/hello-world exec:java` |
+| `examples/service-graph` | service provide / dependency / isolation, dependency response | `mvn -pl examples/service-graph exec:java` |
 | `examples/config-app` | YAML config + include + group | `mvn -pl examples/config-app test` |
 | `examples/hmr-app` | config hot reload + plugin jar hot-swap | `mvn -pl examples/hmr-app exec:java` (edit `jcordis.yml` / `plugins/` to watch it reload) |
 

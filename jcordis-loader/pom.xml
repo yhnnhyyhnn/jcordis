@@ -40,30 +40,4 @@
     </dependency>
   </dependencies>
 
-  <build>
-    <plugins>
-      <plugin>
-        <groupId>org.apache.maven.plugins</groupId>
-        <artifactId>maven-compiler-plugin</artifactId>
-        <executions>
-          <execution>
-            <id>compile-test-fixtures</id>
-            <phase>process-test-classes</phase>
-            <goals>
-              <goal>compile</goal>
-            </goals>
-            <configuration>
-              <!-- fixture classes are packed into plugin jars only; keeping them
-                   off the host test classpath makes class-isolation verifiable -->
-              <compileSourceRoots>
-                <compileSourceRoot>${project.basedir}/src/test/fixtures</compileSourceRoot>
-              </compileSourceRoots>
-              <outputDirectory>${project.build.directory}/test-fixtures-classes</outputDirectory>
-              <release>${maven.compiler.release}</release>
-            </configuration>
-          </execution>
-        </executions>
-      </plugin>
-    </plugins>
-  </build>
 </project>

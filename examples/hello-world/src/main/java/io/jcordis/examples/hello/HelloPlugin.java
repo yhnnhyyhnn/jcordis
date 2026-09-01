@@ -15,6 +15,16 @@ public class HelloPlugin implements Plugin {
 
     public static void main(String[] args) {
         Context root = Context.create();
-        root.plugin(new HelloPlugin()).await().join();
+        new io.jcordis.core.logger.ConsoleExporter(root);
+        io.jcordis.loader.Loader loader = new io.jcordis.loader.Loader(root);
+        loader.builtin("hello", new HelloPlugin());
+
+        io.jcordis.loader.EntryOptions greet = new io.jcordis.loader.EntryOptions();
+        greet.id = "greet";
+        greet.name = "hello";
+        loader.read(java.util.List.of(greet));
+
+        System.out.println("--- unloading the plugin ---");
+        loader.remove("greet");
     }
 }

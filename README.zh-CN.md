@@ -77,8 +77,8 @@ mvn io.jcordis:jcordis-maven-plugin:0.1.0-SNAPSHOT:create-plugin -Dname=demo-plu
 
 | 示例 | 演示内容 | 运行方式 |
 |---|---|---|
-| `examples/hello-world` | 最小插件生命周期 | `mvn -pl examples/hello-world test` |
-| `examples/service-graph` | 服务提供 / 依赖 / 隔离域 | `mvn -pl examples/service-graph test` |
+| `examples/hello-world` | 最小插件生命周期（加载/卸载） | `mvn -pl examples/hello-world exec:java` |
+| `examples/service-graph` | 服务提供 / 依赖 / 隔离域、依赖响应 | `mvn -pl examples/service-graph exec:java` |
 | `examples/config-app` | YAML 配置 + include + group | `mvn -pl examples/config-app test` |
 | `examples/hmr-app` | 配置热重载 + 插件 jar 热替换 | `mvn -pl examples/hmr-app exec:java`（改 `jcordis.yml` / `plugins/` 观察热重载） |
 
