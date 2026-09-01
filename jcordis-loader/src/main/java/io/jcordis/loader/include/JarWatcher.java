@@ -36,7 +36,8 @@ public final class JarWatcher implements Runnable {
     private final Map<String, String> fingerprints = new ConcurrentHashMap<>();
     private final AtomicBoolean running = new AtomicBoolean(false);
 
-    private WatchService watchService;
+    /** Created on the start thread, closed on stop — visible across threads. */
+    private volatile WatchService watchService;
 
     public JarWatcher(Loader loader, Path dir) {
         this.loader = loader;
@@ -112,6 +113,7 @@ public final class JarWatcher implements Runnable {
     }
 
     private void handle(Path fileName, WatchEvent.Kind<?> kind) {
+        if (!running.get()) return; // teardown in progress — never load after stop
         String file = fileName.getFileName().toString();
         if (!file.endsWith(".jar")) return;
         Path jar = dir.resolve(file);
@@ -154,6 +156,10 @@ public final class JarWatcher implements Runnable {
                     } catch (InterruptedException e) {
                         return;
                     }
+                    // the watcher may have been stopped while we slept: never
+                    // load jars after teardown (a fresh class loader would hold
+                    // the jar handle and leak it)
+                    if (!running.get()) return;
                     handle(Path.of(file), StandardWatchEventKinds.ENTRY_MODIFY);
                 },
                 "jcordis-jar-retry");

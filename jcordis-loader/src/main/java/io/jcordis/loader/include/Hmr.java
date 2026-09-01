@@ -39,7 +39,8 @@ public final class Hmr implements Runnable {
 
     private final AtomicBoolean running = new AtomicBoolean(false);
     private java.nio.file.attribute.FileTime lastModified;
-    private List<EntryOptions> data;
+    /** Written by the polling thread, read by include listeners on app threads. */
+    private volatile List<EntryOptions> data;
 
     public Hmr(Context ctx, Loader loader, Map<String, Object> config) {
         this.ctx = ctx;

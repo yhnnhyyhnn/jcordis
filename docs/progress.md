@@ -1103,3 +1103,34 @@ Tests run: 196, Failures: 0 -- 总计（TreeConcurrencyTest +1，AggregateJarE2e
 Reactor: jcordis 10/10 模块 SUCCESS, BUILD SUCCESS
 mvn -Pformat spotless:check -- BUILD SUCCESS
 ```
+
+---
+
+## 推进：Hmr/JarWatcher 并发 + README 双语同步（2026-08-27）
+
+### 1. 轮询/监视线程并发（第 2 项）
+
+| 缺陷 | 修复 |
+|---|---|
+| `Hmr.data` 非 volatile：轮询线程写、Include 监听器（应用线程）读 → 可见性竞态 | `volatile` |
+| `JarWatcher.watchService` 非 volatile：start 线程写、stop 线程读/close → 可能看不到新值、不 close | `volatile` |
+| **`scheduleRetry` 新线程不受 running 门控**：watcher.stop() 后 retry 线程仍 loadJar → 新类加载器持 jar 句柄 → Windows 上 @TempDir 删除失败（实测） | retry 线程与 `handle` 入口均检查 `running`（teardown 后绝不加载） |
+
+| 测试 | 覆盖 |
+|---|---|
+| `HmrConcurrencyTest`（1 例） | Hmr 轮询整树重写 vs 应用线程 create/remove/entries + 用户改配置文件并发——数据损坏类异常即失败 |
+| `JarWatcherConcurrencyTest`（1 例） | jar 反复替换（MODIFY→原子热替换） vs 应用线程读取并发；@TempDir 可清理（句柄释放验证） |
+
+连续 3 轮全绿（含 JarWatcherTest 既有 3 例回归）。
+
+### 2. README 双语同步（第 3 项）
+
+`README.zh-CN.md` 核心特性段镜像英文版：内部事件瀑布、异步 body 不泄漏、realm GC、entry inject/await/transfer/locate、并发安全机制。
+
+### 验证结果
+
+```
+Tests run: 198, Failures: 0 -- 总计（HmrConcurrencyTest +1，JarWatcherConcurrencyTest +1）
+Reactor: jcordis 10/10 模块 SUCCESS, BUILD SUCCESS
+mvn -Pformat spotless:check -- BUILD SUCCESS
+```

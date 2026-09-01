@@ -36,11 +36,12 @@ Java 21 实现的 **Cordis** —— 时空可组合性元框架（Meta-Framework
 ## 核心特性
 
 - **时空可组合性**：`ctx.effect()` 注册可逆副作用（时间组合），插件销毁时逆序清理；`ctx.isolate()` / `ctx.intercept()` 构建服务隔离域（空间组合）
-- **事件系统**：emit / bail / serial / parallel / waterfall 五种调度模式，thisArg 过滤
-- **插件生命周期**：Fiber 状态机（依赖 epoch 驱动，注入齐备自动加载、缺失自动卸载）、`restart()` / 配置热更新
-- **Loader 声明式配置**：Entry 树 + 配置 diff 同步（YAML/JSON 经 `ConfigParser` 策略解析）+ 隔离域（`Realm`：`#id` 本地域 / `@label` 共享域）
-- **插件热加载 HMR**：运行时从 jar 动态加载插件（SPI 发现 + 独立 `PluginClassLoader`）、jar 变更热替换（原子替换 + 失败回滚）、完整类卸载
+- **事件系统**：emit / bail / serial / parallel / waterfall 五种调度模式，thisArg 过滤；内部事件瀑布（`internal/get`、`internal/set` 可拦截服务访问）、`internal/status` 状态转换通知
+- **插件生命周期**：Fiber 状态机（依赖 epoch 驱动，注入齐备自动加载、缺失自动卸载）、`restart()` / 配置热更新、`getEffects()` 自省；失败插件仅 `update()` 可恢复；异步插件体（返回 `CompletableFuture`）完成时收集 disposable，fiber 先销毁则不泄漏
+- **Loader 声明式配置**：Entry 树 + 配置 diff 同步（YAML/JSON 经 `ConfigParser` 策略解析）+ 隔离域（`Realm`：`#id` 本地域 / `@label` 共享域，无引用时自动回收）+ entry `inject` 合并、`await` 就绪门控、跨 group `transfer(id, parent)`、`locate()`
+- **插件热加载 HMR**：运行时从 jar 动态加载插件（SPI 发现 + 独立 `PluginClassLoader`）、jar 变更热替换（原子替换 + 失败回滚）、完整类卸载；配置文件热重载经 `Hmr`（见 `examples/hmr-app` 演示）
 - **脚手架**：Maven 插件 / CLI 双入口生成应用与插件项目
+- **并发安全**：per-fiber 监控锁（快照-处置分离，持锁不回调用户代码）、服务注册原子化（`putIfAbsent`）、线程安全效应集合与依赖缓存（详见 [Concurrency Model](#concurrency-model)）
 
 ## 模块结构
 
@@ -116,5 +117,5 @@ mvn io.jcordis:jcordis-maven-plugin:0.1.0-SNAPSHOT:create-plugin -Dname=demo-plu
 ## 构建与测试
 
 ```bash
-mvn clean verify   # 10/10 模块，196 测试全绿
+mvn clean verify   # 10/10 模块，198 测试全绿
 ```

@@ -134,5 +134,5 @@ Plugin projects produce a **clean jar**: only plugin classes + a `META-INF/servi
 ## Build & Test
 
 ```bash
-mvn clean verify   # 10/10 modules, 196 tests green
+mvn clean verify   # 10/10 modules, 198 tests green
 ```
