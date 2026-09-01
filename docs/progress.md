@@ -929,3 +929,40 @@ mvn -Pformat spotless:check -- BUILD SUCCESS
 Tests run: 178, Failures: 0 -- 总计（EntryIsolateChangeTest +1）
 Reactor: jcordis 10/10 模块 SUCCESS, BUILD SUCCESS
 ```
+
+---
+
+## 推进：dispose.spec 异步路径 + 并发安全 + 文档（2026-08-27）
+
+### 1. 并发安全改造（Monitor + Snapshot 模式）
+
+| 项 | 内容 |
+|---|---|
+| 问题 | 异步插件体在任意线程完成：`reload()` 的 handle 在完成线程写 `disposables`/`effectMetas`（ArrayList 非线程安全），与主线程的 effect()/unload 竞争；且 fiber 销毁后完成的 body 仍被收集（泄漏），失败时还会把 DISPOSED 改回 FAILED |
+| 修复 | `FiberImpl` 新增 `lifecycle` 监控锁（**Monitor 模式**）：所有对效应集合的修改（effect 注册、collectEffect 归属移交、disposeTail、drain、clear、计数/快照读）持锁；`drainEffects()`/`disposeTail(from)` 采用**快照-处置分离**（锁内快照 + 锁外逆序处置，绝不持锁调用用户回调，可重入安全）；异步 handle 的"收集决策"在锁内与 `disposed` 判定原子（unload 的 CAS→drain 顺序保证不泄漏）；销毁后的失败被忽略（保持 DISPOSED） |
+| 语义 | 对齐 dispose.spec：`async return 1`（完成时收集）、`async return 2`（销毁后完成 → 立即处置，不泄漏） |
+
+### 2. 测试翻译（dispose.spec 异步路径，Java 适配）
+
+| 测试 | 覆盖 |
+|---|---|
+| `FiberAsyncTest.asyncBody_shouldCollectDisposableOnCompletion` | async return 1：异步 body 完成 → 收集 → fiber 销毁时处置 |
+| `FiberAsyncTest.asyncBodyDispose_afterFiberDisposed_shouldDisposeResultImmediately` | async return 2：销毁后完成 → 立即处置不泄漏 |
+| `FiberAsyncTest.asyncBodyFailure_afterDispose_shouldBeIgnored` | 销毁后失败忽略，状态保持 DISPOSED |
+| `FiberAsyncTest.asyncBody_concurrentCompleteAndDispose_shouldNotLeak` | 200 轮完成/销毁线程竞争：无论谁赢，disposable 恰好处置一次 |
+
+### 3. 文档（第 4 项）
+
+| 文档 | 变更 |
+|---|---|
+| README | 新增 **Concurrency Model** 段落（英文）：异步 body 完成语义、Monitor 锁、销毁后完成/失败的处理 |
+| compatibility.md | 二节新增"异步效应收集"实现差异行（同参考语义，经 Monitor 锁实现） |
+| patterns.md | 行为型新增 **Monitor** 与 **Snapshot**（并发模式）两行（含角色与意图） |
+
+### 验证结果
+
+```
+Tests run: 182, Failures: 0 -- 总计（FiberAsyncTest +4）
+Reactor: jcordis 10/10 模块 SUCCESS, BUILD SUCCESS
+mvn -Pformat spotless:check -- BUILD SUCCESS
+```

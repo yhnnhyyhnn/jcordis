@@ -37,6 +37,8 @@
 | **Mediator**（隐式） | `Context` 作为中央协调者 | 服务/事件/插件/日志的集中交互点 |
 | **Iterator**（隐式） | `DisposableList`（Iterable）、`EntryTree.entries()` | 集合遍历的统一接口 |
 | **Factory Method**（隐式） | `EffectResult.of(...)`、`Disposable.noop()`、`EventOptions.of(...)` | 语义化工厂 |
+| **Monitor**（并发） | `FiberImpl.lifecycle` 锁 | 复合状态操作原子化：异步插件体完成线程与销毁线程对 disposables/effectMetas 的并发修改串行化（快照-处置分离，持锁不回调） |
+| **Snapshot**（并发） | `FiberImpl.drainEffects()` / `disposeTail(from)` | 锁内快照 + 锁外逆序处置：避免持锁调用用户回调（可重入安全），同时保证清空原子性 |
 
 ## 四、刻意未应用的模式
 

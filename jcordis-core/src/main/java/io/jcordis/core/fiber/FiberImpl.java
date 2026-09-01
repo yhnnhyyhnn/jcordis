@@ -48,6 +48,16 @@ public final class FiberImpl implements Fiber {
     private final Map<String, Impl> store = new HashMap<>();
     private final PluginRuntime runtime;
 
+    /**
+     * Monitor lock guarding the effect collections (concurrency pattern).
+     *
+     * <p>Async plugin bodies complete on arbitrary threads; every mutation of
+     * {@link #disposables}/{@link #effectMetas} happens under this lock so the
+     * loader thread and the completing thread cannot corrupt each other. User
+     * callbacks are never invoked while holding it (see {@link #drainEffects}).
+     */
+    private final Object lifecycle = new Object();
+
     private volatile Context ctx;
     private volatile int uid;
     private volatile FiberState state;
@@ -199,6 +209,30 @@ public final class FiberImpl implements Fiber {
         return await();
     }
 
+    /** Adds a disposable under the lifecycle lock. */
+    private void addDisposable(Disposable disposable) {
+        synchronized (lifecycle) {
+            disposables.add(disposable);
+        }
+    }
+
+    /**
+     * Snapshots the registered effects under the lock, then disposes them in
+     * reverse order <em>outside</em> the lock — user callbacks are never
+     * invoked while the monitor is held.
+     */
+    private void drainEffects() {
+        List<Disposable> snapshot;
+        synchronized (lifecycle) {
+            snapshot = new ArrayList<>(disposables);
+            disposables.clear();
+            effectMetas.clear();
+        }
+        for (int i = snapshot.size() - 1; i >= 0; i--) {
+            snapshot.get(i).dispose();
+        }
+    }
+
     @Override
     public Disposable effect(EffectRunner runner, String label) {
         assertActive();
@@ -206,7 +240,10 @@ public final class FiberImpl implements Fiber {
         // nested effects registered by this runner grow the fiber's lists; on a
         // throwing runner they must be disposed immediately (mirrors Cordis's
         // `_execute` catch → `dispose()` for already-collected disposables)
-        int registeredBefore = disposables.size();
+        int registeredBefore;
+        synchronized (lifecycle) {
+            registeredBefore = disposables.size();
+        }
         EffectResult result;
         try {
             result = runner.run(ctx);
@@ -231,21 +268,33 @@ public final class FiberImpl implements Fiber {
                 collected.get(i).dispose();
             }
         });
-        disposables.add(wrapper);
-        effectMetas.add(meta);
+        synchronized (lifecycle) {
+            disposables.add(wrapper);
+            effectMetas.add(meta);
+        }
         return wrapper;
     }
 
     /** Disposes (reverse order) and removes the effect tail starting at {@code from}. */
     private void disposeTail(int from) {
-        for (int i = disposables.size() - 1; i >= from; i--) {
-            disposables.get(i).dispose();
+        List<Disposable> snapshot;
+        synchronized (lifecycle) {
+            if (disposables.size() <= from) {
+                while (effectMetas.size() > from) {
+                    effectMetas.remove(effectMetas.size() - 1);
+                }
+                return;
+            }
+            snapshot = new ArrayList<>(disposables.subList(from, disposables.size()));
+            while (disposables.size() > from) {
+                disposables.remove(disposables.size() - 1);
+            }
+            while (effectMetas.size() > from) {
+                effectMetas.remove(effectMetas.size() - 1);
+            }
         }
-        if (disposables.size() > from) {
-            disposables.subList(from, disposables.size()).clear();
-        }
-        if (effectMetas.size() > from) {
-            effectMetas.subList(from, effectMetas.size()).clear();
+        for (int i = snapshot.size() - 1; i >= 0; i--) {
+            snapshot.get(i).dispose();
         }
     }
 
@@ -256,8 +305,10 @@ public final class FiberImpl implements Fiber {
             // the nested effect is now owned by the outer disposer: remove it
             // from the fiber's own list so teardown does not double-manage it
             // (mirrors Cordis's `_disposables.delete(dispose)` in collect)
-            disposables.remove(child);
-            effectMetas.remove(child.meta());
+            synchronized (lifecycle) {
+                disposables.remove(child);
+                effectMetas.remove(child.meta());
+            }
         }
     }
 
@@ -283,7 +334,9 @@ public final class FiberImpl implements Fiber {
 
     @Override
     public List<EffectMeta> getEffects() {
-        return List.copyOf(effectMetas);
+        synchronized (lifecycle) {
+            return List.copyOf(effectMetas);
+        }
     }
 
     @Override
@@ -374,11 +427,29 @@ public final class FiberImpl implements Fiber {
                 CompletableFuture<Object> future = (CompletableFuture<Object>) pending;
                 inertia = future.handle((value, failure) -> {
                     if (failure != null) {
-                        handleBodyFailure(unwrapCause(failure));
-                    } else {
-                        if (value instanceof Disposable disposable) {
-                            disposables.add(disposable);
+                        // body failed; a disposal racing the completion wins
+                        if (!disposed.get()) {
+                            handleBodyFailure(unwrapCause(failure));
                         }
+                    } else if (value instanceof Disposable disposable) {
+                        // the collect decision is atomic with the drain in
+                        // unload(): if the fiber was disposed in the meantime,
+                        // the produced disposable must not leak — dispose it
+                        // immediately (mirrors dispose.spec 'async return 2')
+                        boolean collected;
+                        synchronized (lifecycle) {
+                            collected = !disposed.get();
+                            if (collected) {
+                                disposables.add(disposable);
+                            }
+                        }
+                        if (collected) {
+                            transitionState(FiberState.ACTIVE);
+                            notifyServices();
+                        } else {
+                            disposable.dispose();
+                        }
+                    } else {
                         transitionState(FiberState.ACTIVE);
                         notifyServices();
                     }
@@ -388,7 +459,7 @@ public final class FiberImpl implements Fiber {
                 });
             } else {
                 if (result instanceof Disposable disposable) {
-                    disposables.add(disposable);
+                    addDisposable(disposable);
                 }
                 transitionState(FiberState.ACTIVE);
                 notifyServices();
@@ -418,11 +489,7 @@ public final class FiberImpl implements Fiber {
     }
 
     private void unloadBody() {
-        for (int i = disposables.size() - 1; i >= 0; i--) {
-            disposables.get(i).dispose();
-        }
-        disposables.clear();
-        effectMetas.clear();
+        drainEffects();
         // the dependency cache (`store`) is deliberately NOT cleared: it is the
         // resolution snapshot used by refresh() — a restart must be able to
         // re-resolve dependencies that are still available (mirrors Cordis
@@ -447,11 +514,7 @@ public final class FiberImpl implements Fiber {
                 registry.delete(runtime.callback());
             }
         }
-        for (int i = disposables.size() - 1; i >= 0; i--) {
-            disposables.get(i).dispose();
-        }
-        disposables.clear();
-        effectMetas.clear();
+        drainEffects();
         store.clear();
         transitionState(FiberState.DISPOSED);
     }
@@ -471,13 +534,17 @@ public final class FiberImpl implements Fiber {
 
     @Override
     public int effectCount() {
-        return disposables.size();
+        synchronized (lifecycle) {
+            return disposables.size();
+        }
     }
 
     /** Clears all registered effects (used after framework setup). */
     public void clearEffects() {
-        disposables.clear();
-        effectMetas.clear();
+        synchronized (lifecycle) {
+            disposables.clear();
+            effectMetas.clear();
+        }
     }
 
     @Override
@@ -487,14 +554,19 @@ public final class FiberImpl implements Fiber {
                 if (!disposed.compareAndSet(false, true)) return;
                 transitionState(FiberState.UNLOADING);
                 RuntimeException failure = null;
-                for (int i = disposables.size() - 1; i >= 0; i--) {
+                List<Disposable> snapshot;
+                synchronized (lifecycle) {
+                    snapshot = new ArrayList<>(disposables);
+                    disposables.clear();
+                    effectMetas.clear();
+                }
+                for (int i = snapshot.size() - 1; i >= 0; i--) {
                     try {
-                        disposables.get(i).dispose();
+                        snapshot.get(i).dispose();
                     } catch (RuntimeException e) {
                         if (failure == null) failure = e;
                     }
                 }
-                disposables.clear();
                 transitionState(FiberState.DISPOSED);
                 if (failure != null) throw failure;
             });

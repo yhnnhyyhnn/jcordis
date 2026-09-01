@@ -81,6 +81,22 @@ mvn io.jcordis:jcordis-maven-plugin:0.1.0-SNAPSHOT:create-plugin -Dname=demo-plu
 | `examples/config-app` | YAML config + include + group | `mvn -pl examples/config-app test` |
 | `examples/hmr-app` | config hot reload + plugin jar hot-swap | `mvn -pl examples/hmr-app exec:java` (edit `jcordis.yml` / `plugins/` to watch it reload) |
 
+## Concurrency Model
+
+Plugin bodies are synchronous by default; an async body returns a
+`CompletableFuture` (e.g. an async `init`). When an async body completes, its
+resulting disposable is collected under a per-fiber **monitor lock** (the
+concurrency pattern), and the state transition races are resolved so that:
+
+- a disposable produced by a body that completes <em>after</em> the fiber was
+torn down is disposed immediately — never leaked (mirrors `dispose.spec`
+`async return 2`);
+- a body failure arriving after disposal is ignored — the fiber stays
+`DISPOSED`, not `FAILED`;
+- effect teardown snapshots the collection under the lock and invokes user
+callbacks <em>outside</em> it, so disposers may safely call back into the
+fiber (e.g. `ctx.effect` / `ctx.get`).
+
 ## Business System Integration
 
 One coordinate brings in the whole runtime framework (core + loader, including the timer / console-exporter / include / group / utils functionality merged into them):
@@ -116,5 +132,5 @@ Plugin projects produce a **clean jar**: only plugin classes + a `META-INF/servi
 ## Build & Test
 
 ```bash
-mvn clean verify   # 10/10 modules, 178 tests green
+mvn clean verify   # 10/10 modules, 182 tests green
 ```

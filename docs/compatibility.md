@@ -31,6 +31,7 @@
 | `[Service.init]` symbol 方法 | `Initializable.init()` 接口方法 | Java 无 symbol |
 | JS 原型链上下文继承 | 显式 parent 链接 + extend() 复制 map | 规避原型链 |
 | `Promise`/`async` 插件体 | `CompletableFuture`（同步插件体 + 可选异步 init） | Java 并发模型 |
+| 异步效应收集 | 完成时收集 disposable；fiber 已销毁则**立即处置**（不泄漏，`async return 2`）；销毁后失败忽略（保持 DISPOSED） | 同参考语义，经 per-fiber Monitor 锁实现 |
 | `inspect(ctx)` → `Context <name>` | `ctx.toString()` | 无 util.inspect |
 | `Service[resolveConfig]`（intercept 链合并 base/head） | `Service.resolveConfig(base, head)` 方法 | Java 方法调用 |
 | `fiber.inject` 合并（entry 级 inject 经 `internal/plugin` 事件注入） | `RegistryService.plugin(ctx, plugin, config, extraInject)` 构造前合并 | Java 无事件钩子时机 |
