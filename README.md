@@ -72,6 +72,15 @@ mvn io.jcordis:jcordis-maven-plugin:0.1.0-SNAPSHOT:create -Dname=my-app
 mvn io.jcordis:jcordis-maven-plugin:0.1.0-SNAPSHOT:create-plugin -Dname=demo-plugin
 ```
 
+## Examples
+
+| Example | Demonstrates | Run |
+|---|---|---|
+| `examples/hello-world` | minimal plugin lifecycle | `mvn -pl examples/hello-world test` |
+| `examples/service-graph` | service provide / dependency / isolation | `mvn -pl examples/service-graph test` |
+| `examples/config-app` | YAML config + include + group | `mvn -pl examples/config-app test` |
+| `examples/hmr-app` | config hot reload + plugin jar hot-swap | `mvn -pl examples/hmr-app exec:java` (edit `jcordis.yml` / `plugins/` to watch it reload) |
+
 ## Business System Integration
 
 One coordinate brings in the whole runtime framework (core + loader, including the timer / console-exporter / include / group / utils functionality merged into them):

@@ -72,6 +72,15 @@ mvn io.jcordis:jcordis-maven-plugin:0.1.0-SNAPSHOT:create -Dname=my-app
 mvn io.jcordis:jcordis-maven-plugin:0.1.0-SNAPSHOT:create-plugin -Dname=demo-plugin
 ```
 
+## 示例
+
+| 示例 | 演示内容 | 运行方式 |
+|---|---|---|
+| `examples/hello-world` | 最小插件生命周期 | `mvn -pl examples/hello-world test` |
+| `examples/service-graph` | 服务提供 / 依赖 / 隔离域 | `mvn -pl examples/service-graph test` |
+| `examples/config-app` | YAML 配置 + include + group | `mvn -pl examples/config-app test` |
+| `examples/hmr-app` | 配置热重载 + 插件 jar 热替换 | `mvn -pl examples/hmr-app exec:java`（改 `jcordis.yml` / `plugins/` 观察热重载） |
+
 ## 业务系统集成
 
 一个坐标获得整个运行时框架（core + loader，含已并入其中的 timer / console-exporter / include / group / utils 功能）：
