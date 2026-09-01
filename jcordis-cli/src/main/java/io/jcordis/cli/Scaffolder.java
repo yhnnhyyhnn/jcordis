@@ -57,9 +57,7 @@ public final class Scaffolder {
         Files.createDirectories(dir.resolve("src/main/resources/META-INF/services"));
 
         Files.writeString(
-                dir.resolve("pom.xml"),
-                render(PLUGIN_POM, name).replace("{{pkg}}", pkg),
-                StandardCharsets.UTF_8);
+                dir.resolve("pom.xml"), render(PLUGIN_POM, name).replace("{{pkg}}", pkg), StandardCharsets.UTF_8);
         Files.writeString(
                 dir.resolve("src/main/java").resolve(pkg.replace('.', '/')).resolve("SamplePlugin.java"),
                 render(PLUGIN_SAMPLE, name).replace("{{pkg}}", pkg),
@@ -75,7 +73,8 @@ public final class Scaffolder {
         return template.replace("{{name}}", name);
     }
 
-    private static final String PLUGIN_POM = """
+    private static final String PLUGIN_POM =
+            """
             <?xml version="1.0" encoding="UTF-8"?>
             <project xmlns="http://maven.apache.org/POM/4.0.0"
                      xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
@@ -130,7 +129,8 @@ public final class Scaffolder {
             </project>
             """;
 
-    private static final String PLUGIN_SAMPLE = """
+    private static final String PLUGIN_SAMPLE =
+            """
             package {{pkg}};
 
             import io.jcordis.core.context.Context;
@@ -148,7 +148,8 @@ public final class Scaffolder {
             }
             """;
 
-    private static final String POM = """
+    private static final String POM =
+            """
             <?xml version="1.0" encoding="UTF-8"?>
             <project xmlns="http://maven.apache.org/POM/4.0.0"
                      xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
@@ -203,7 +204,8 @@ public final class Scaffolder {
             </project>
             """;
 
-    private static final String CONFIG = """
+    private static final String CONFIG =
+            """
             # {{name}} application configuration
             # Loader entries: each entry loads a plugin by name from the classpath.
             plugins:
@@ -215,7 +217,8 @@ public final class Scaffolder {
                 name: ./sample-plugin
             """;
 
-    private static final String ENTRY = """
+    private static final String ENTRY =
+            """
             package {{pkg}};
 
             import io.jcordis.core.context.Context;
@@ -251,7 +254,8 @@ public final class Scaffolder {
             }
             """;
 
-    private static final String SAMPLE = """
+    private static final String SAMPLE =
+            """
             package {{pkg}};
 
             import io.jcordis.core.context.Context;

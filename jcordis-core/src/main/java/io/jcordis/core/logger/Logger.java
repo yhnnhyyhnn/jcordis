@@ -73,7 +73,8 @@ public final class Logger {
         }
         String format = (String) remaining.remove(0);
         StringBuilder sb = new StringBuilder();
-        java.util.regex.Matcher matcher = java.util.regex.Pattern.compile("%([a-zA-Z%])").matcher(format);
+        java.util.regex.Matcher matcher =
+                java.util.regex.Pattern.compile("%([a-zA-Z%])").matcher(format);
         int cursor = 0;
         while (matcher.find()) {
             sb.append(format, cursor, matcher.start());
@@ -82,14 +83,14 @@ public final class Logger {
                 sb.append('%');
             } else {
                 Object value = remaining.isEmpty() ? null : remaining.remove(0);
-                sb.append(formatter(spec).apply(value));
+                sb.append(formatter(spec).apply(value, exporter, message));
             }
             cursor = matcher.end();
         }
         sb.append(format.substring(cursor));
         for (Object arg : remaining) {
             if (arg != null && !(arg instanceof String)) {
-                arg = formatter("o").apply(arg);
+                arg = formatter("o").apply(arg, exporter, message);
             }
             sb.append(' ').append(arg);
         }
@@ -102,24 +103,29 @@ public final class Logger {
         return String.join("\n", truncated);
     }
 
-    private static java.util.function.Function<Object, String> formatter(String spec) {
+    private interface Formatter {
+        String apply(Object value, Exporter exporter, Message message);
+    }
+
+    private static Formatter formatter(String spec) {
         return switch (spec) {
-            case "s" -> value -> String.valueOf(value);
-            case "d", "i" -> value -> String.valueOf((long) Double.parseDouble(String.valueOf(value)));
-            case "f" -> value -> String.valueOf(Double.parseDouble(String.valueOf(value)));
-            case "o", "O" -> value -> value == null ? "null" : String.valueOf(value);
-            case "c" -> value -> "";
-            case "C" -> value -> "";
-            default -> value -> "%" + spec + value;
+            case "s" -> (value, exporter, message) -> String.valueOf(value);
+            case "d", "i" -> (value, exporter, message) ->
+                    String.valueOf((long) Double.parseDouble(String.valueOf(value)));
+            case "f" -> (value, exporter, message) -> String.valueOf(Double.parseDouble(String.valueOf(value)));
+            case "o", "O" -> (value, exporter, message) -> value == null ? "null" : String.valueOf(value);
+            case "c" -> (value, exporter, message) -> "";
+                // %C colors the value with the message name's palette code (mirrors Cordis)
+            case "C" -> (value, exporter, message) -> color(exporter, code(message.name(), exporter.colors()), value);
+            default -> (value, exporter, message) -> "%" + spec + value;
         };
     }
 
     private static final int[] C16 = {6, 2, 3, 4, 5, 1};
     private static final int[] C256 = {
-        20, 21, 26, 27, 32, 33, 38, 39, 40, 41, 42, 43, 44, 45, 56, 57, 62,
-        63, 68, 69, 74, 75, 76, 77, 78, 79, 80, 81, 92, 93, 98, 99, 112, 113,
-        129, 134, 135, 148, 149, 160, 161, 162, 163, 164, 165, 166, 167, 168,
-        169, 170, 171, 172, 173, 178, 179, 184, 185, 196, 197, 198, 199, 200,
-        201, 202, 203, 204, 205, 206, 207, 208, 209, 214, 215, 220, 221,
+        20, 21, 26, 27, 32, 33, 38, 39, 40, 41, 42, 43, 44, 45, 56, 57, 62, 63, 68, 69, 74, 75, 76, 77, 78, 79, 80, 81,
+        92, 93, 98, 99, 112, 113, 129, 134, 135, 148, 149, 160, 161, 162, 163, 164, 165, 166, 167, 168, 169, 170, 171,
+        172, 173, 178, 179, 184, 185, 196, 197, 198, 199, 200, 201, 202, 203, 204, 205, 206, 207, 208, 209, 214, 215,
+        220, 221,
     };
 }

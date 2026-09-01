@@ -1,12 +1,8 @@
 package io.jcordis.core.logger;
 
 import io.jcordis.core.context.Context;
-import io.jcordis.core.logger.Exporter;
-import io.jcordis.core.logger.Logger;
-import io.jcordis.core.logger.Message;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
-import java.util.Map;
 
 /**
  * Console exporter, mirroring Cordis's {@code ConsoleExporter}.
@@ -49,8 +45,7 @@ public class ConsoleExporter implements Exporter {
     public String render(Message message) {
         StringBuilder output = new StringBuilder();
         if (showTime != null && !showTime.isEmpty()) {
-            String time = DateTimeFormatter.ofPattern(toJavaPattern(showTime))
-                    .format(LocalDateTime.now());
+            String time = DateTimeFormatter.ofPattern(toJavaPattern(showTime)).format(LocalDateTime.now());
             output.append(Logger.color(this, 8, time));
         }
         int code = Logger.code(message.name(), colors);
@@ -79,7 +74,8 @@ public class ConsoleExporter implements Exporter {
     }
 
     private static String toJavaPattern(String cordisPattern) {
-        return cordisPattern.replace("yyyy", "yyyy")
+        return cordisPattern
+                .replace("yyyy", "yyyy")
                 .replace("MM", "MM")
                 .replace("dd", "dd")
                 .replace("hh", "HH")

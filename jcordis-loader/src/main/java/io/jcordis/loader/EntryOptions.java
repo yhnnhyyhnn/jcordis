@@ -39,8 +39,7 @@ public final class EntryOptions {
      * original state — the rollback mechanism used by config updates.
      */
     public Snapshot snapshot() {
-        return new Snapshot(
-                id, name, config, group, disabled, inject, intercept, isolate);
+        return new Snapshot(id, name, config, group, disabled, inject, intercept, isolate);
     }
 
     /** Immutable memento holding the field values at capture time. */

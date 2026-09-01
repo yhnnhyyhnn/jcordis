@@ -27,12 +27,14 @@ class HelloWorldTest {
         Context root = Context.create();
         AtomicInteger calls = new AtomicInteger();
         root.plugin((ctx, config) -> {
-            ctx.on("custom-event", (thisArg, args) -> {
-                calls.incrementAndGet();
-                return null;
-            });
-            return null;
-        }).await().join();
+                    ctx.on("custom-event", (thisArg, args) -> {
+                        calls.incrementAndGet();
+                        return null;
+                    });
+                    return null;
+                })
+                .await()
+                .join();
 
         root.emit("custom-event");
         assertThat(calls).hasValue(1);

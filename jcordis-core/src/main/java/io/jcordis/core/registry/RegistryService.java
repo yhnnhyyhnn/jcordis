@@ -86,9 +86,23 @@ public final class RegistryService {
 
     /** Registers a plugin on the given context, creating a new plugin fiber. */
     public Fiber plugin(Context ctx, Plugin plugin, Object config) {
+        return plugin(ctx, plugin, config, Map.of());
+    }
+
+    /**
+     * Registers a plugin with extra inject declarations (entry-level inject in
+     * the loader), merged over the plugin's own declarations before dependency
+     * resolution. Mirrors Cordis merging {@code entry.options.inject} into
+     * {@code fiber.inject} via the {@code internal/plugin} event.
+     */
+    public Fiber plugin(Context ctx, Plugin plugin, Object config, Map<String, Object> extraInject) {
         ctx.fiber().assertActive();
         PluginRuntime runtime = internal.computeIfAbsent(plugin, key -> new PluginRuntime(key.name(), key));
-        return new FiberImpl(ctx, config, plugin.inject(), runtime);
+        Map<String, Object> inject = new java.util.HashMap<>(plugin.inject());
+        if (extraInject != null) {
+            inject.putAll(extraInject);
+        }
+        return new FiberImpl(ctx, config, inject, runtime);
     }
 
     /** Registers a plugin on the current context. */

@@ -10,6 +10,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.Predicate;
 
 /**
  * Service registry of a context tree, mirroring Cordis's {@code ReflectService}.
@@ -52,6 +53,9 @@ public final class ReflectService {
         if (impl == null) {
             throw new IllegalStateException("cannot set property \"" + name + "\" without provide");
         }
+        if (impl.fiber() != source.fiber()) {
+            throw new IllegalStateException("cannot set property \"" + name + "\" in multiple fibers");
+        }
         store.put(implKey(name, source), impl.withValue(value));
     }
 
@@ -74,22 +78,36 @@ public final class ReflectService {
 
     /** Registers a service, returning a disposable that unregisters it. */
     public Disposable provide(String name, Object value, Context source) {
-        return source.fiber().effect(runner -> {
-            ServiceKey<?> key = implKey(name, source);
-            if (store.containsKey(key)) {
-                throw new IllegalStateException("service \"" + name + "\" has been registered at <" + source.fiber().name() + ">");
-            }
-            props.put(name, "service");
-            Impl impl = new Impl(name, value, source.fiber(), null);
-            store.put(key, impl);
-            if (source.fiber().state() == FiberState.ACTIVE) {
-                notify(List.of(name), source);
-            }
-            return io.jcordis.core.fiber.EffectResult.of(() -> {
-                store.remove(key, impl);
-                notify(List.of(name), source);
-            });
-        }, "ctx.provide(" + name + ")");
+        return provide(name, value, source, null);
+    }
+
+    /**
+     * Registers a service with an availability check, returning a disposable
+     * that unregisters it. Mirrors Cordis's {@code provide(name, value, check)}:
+     * dependency resolution ({@code FiberImpl.checkImpl}) consults the check and
+     * treats a {@code false} result as "not available".
+     */
+    public Disposable provide(String name, Object value, Context source, Predicate<Object> check) {
+        return source.fiber()
+                .effect(
+                        runner -> {
+                            ServiceKey<?> key = implKey(name, source);
+                            if (store.containsKey(key)) {
+                                throw new IllegalStateException("service \"" + name + "\" has been registered at <"
+                                        + source.fiber().name() + ">");
+                            }
+                            props.put(name, "service");
+                            Impl impl = new Impl(name, value, source.fiber(), check);
+                            store.put(key, impl);
+                            if (source.fiber().state() == FiberState.ACTIVE) {
+                                notify(List.of(name), source);
+                            }
+                            return io.jcordis.core.fiber.EffectResult.of(() -> {
+                                store.remove(key, impl);
+                                notify(List.of(name), source);
+                            });
+                        },
+                        "ctx.provide(" + name + ")");
     }
 
     /** Re-checks every registered fiber that injects one of {@code names}. */

@@ -1,6 +1,7 @@
 package io.jcordis.core.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import io.jcordis.core.context.Context;
 import io.jcordis.core.fiber.EffectResult;
@@ -37,10 +38,12 @@ class ServiceRegistryTest {
         }
 
         Disposable increase() {
-            return ctx.effect(r -> {
-                value++;
-                return EffectResult.of(() -> value--);
-            }, "increase");
+            return ctx.effect(
+                    r -> {
+                        value++;
+                        return EffectResult.of(() -> value--);
+                    },
+                    "increase");
         }
     }
 
@@ -143,6 +146,61 @@ class ServiceRegistryTest {
         fiber.disposeAsync().join();
         ((Foo) root.get("foo")).increase();
         assertThat(((Foo) root.get("foo")).value()).isEqualTo(3);
+    }
+
+    @Test
+    void set_shouldRejectCrossFiberWrites() {
+        Context root = Context.create();
+        // provide 'counter' from the root fiber
+        root.provide("counter", null);
+        root.set("counter", new Counter(root));
+
+        // a plugin fiber attempts to set the root-provided service
+        Fiber fiber = root.plugin((ctx, config) -> {
+            assertThatThrownBy(() -> ctx.set("counter", new Counter(ctx)))
+                    .hasMessageContaining("cannot set property \"counter\" in multiple fibers");
+            return null;
+        });
+        fiber.await().join();
+    }
+
+    @Test
+    void provideWithCheck_shouldGateDependencyResolution() {
+        Context root = Context.create();
+        AtomicInteger calls = new AtomicInteger();
+        // service gated by a check predicate: not available until flag flips
+        java.util.concurrent.atomic.AtomicBoolean ready = new java.util.concurrent.atomic.AtomicBoolean(false);
+        root.reflect().provide("gated", "value", root, ignored -> ready.get());
+
+        Fiber fiber = root.inject(List.of("gated"), (ctx, config) -> {
+            calls.incrementAndGet();
+            return null;
+        });
+        assertThat(calls).as("check=false blocks dependency").hasValue(0);
+
+        ready.set(true);
+        // notify triggers re-checking (mirrors provide-time notification)
+        root.reflect().notify(List.of("gated"), root);
+
+        assertThat(calls).as("check=true resolves dependency").hasValue(1);
+    }
+
+    @Test
+    void resolveConfig_shouldMergeInterceptChain() {
+        Context root = Context.create();
+        // outer intercept value
+        Context outer = root.intercept("demo", Map.of("a", 1, "b", 1));
+        // inner intercept overrides "a", keeps "b"
+        Context inner = outer.intercept("demo", Map.of("a", 2));
+
+        Service service = new Service(inner, "demo") {};
+        // base is applied first, then outer→inner intercepts: inner wins for
+        // "a", outer keeps "b" (overriding the base)
+        Object merged = service.resolveConfig(Map.of("b", 9), null);
+        assertThat(merged).isEqualTo(Map.of("a", 2, "b", 1));
+
+        Object withHead = service.resolveConfig(null, Map.of("a", 3));
+        assertThat(withHead).isEqualTo(Map.of("a", 3, "b", 1));
     }
 
     @Test

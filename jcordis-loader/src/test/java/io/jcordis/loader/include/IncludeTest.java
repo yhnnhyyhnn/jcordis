@@ -3,14 +3,12 @@ package io.jcordis.loader.include;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import io.jcordis.core.context.Context;
-import io.jcordis.core.registry.Plugin;
 import io.jcordis.loader.EntryOptions;
 import io.jcordis.loader.Loader;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -31,7 +29,8 @@ class IncludeTest {
 
     @Test
     void loadsWithoutPatches() throws IOException {
-        Path path = writeConfig("""
+        Path path = writeConfig(
+                """
                 - id: test
                   name: test-plugin
                   config:
@@ -40,7 +39,10 @@ class IncludeTest {
         Context root = Context.create();
         Loader loader = new Loader(root);
         AtomicInteger calls = new AtomicInteger();
-        loader.mock("@cordisjs/plugin-include", (ctx, config) -> { Include include = new Include(ctx, (java.util.Map<String, Object>) config); return include.apply(ctx, config); });
+        loader.mock("@cordisjs/plugin-include", (ctx, config) -> {
+            Include include = new Include(ctx, (java.util.Map<String, Object>) config);
+            return include.apply(ctx, config);
+        });
         loader.mock("test-plugin", (ctx, config) -> {
             calls.incrementAndGet();
             assertThat(config).isInstanceOf(Map.class);
@@ -60,7 +62,10 @@ class IncludeTest {
         Context root = Context.create();
         Loader loader = new Loader(root);
         AtomicInteger calls = new AtomicInteger();
-        loader.mock("@cordisjs/plugin-include", (ctx, config) -> { Include include = new Include(ctx, (java.util.Map<String, Object>) config); return include.apply(ctx, config); });
+        loader.mock("@cordisjs/plugin-include", (ctx, config) -> {
+            Include include = new Include(ctx, (java.util.Map<String, Object>) config);
+            return include.apply(ctx, config);
+        });
         loader.mock("test-plugin", (ctx, config) -> {
             calls.incrementAndGet();
             return null;
@@ -68,7 +73,8 @@ class IncludeTest {
         Map<String, Object> patch = new java.util.HashMap<>();
         patch.put("id", "test");
         patch.put("disabled", true);
-        loader.read(List.of(entry("inc", "@cordisjs/plugin-include", Map.of("path", path.toString(), "patches", List.of(patch)))));
+        loader.read(List.of(
+                entry("inc", "@cordisjs/plugin-include", Map.of("path", path.toString(), "patches", List.of(patch)))));
 
         assertThat(calls).hasValue(0);
     }
@@ -83,7 +89,10 @@ class IncludeTest {
         Loader loader = new Loader(root);
         AtomicInteger testCalls = new AtomicInteger();
         AtomicInteger extraCalls = new AtomicInteger();
-        loader.mock("@cordisjs/plugin-include", (ctx, config) -> { Include include = new Include(ctx, (java.util.Map<String, Object>) config); return include.apply(ctx, config); });
+        loader.mock("@cordisjs/plugin-include", (ctx, config) -> {
+            Include include = new Include(ctx, (java.util.Map<String, Object>) config);
+            return include.apply(ctx, config);
+        });
         loader.mock("test-plugin", (ctx, config) -> {
             testCalls.incrementAndGet();
             return null;
@@ -94,7 +103,8 @@ class IncludeTest {
         });
         Map<String, Object> patch = new java.util.HashMap<>();
         patch.put("insert", List.of(entry(null, "extra-plugin", null)));
-        loader.read(List.of(entry("inc", "@cordisjs/plugin-include", Map.of("path", path.toString(), "patches", List.of(patch)))));
+        loader.read(List.of(
+                entry("inc", "@cordisjs/plugin-include", Map.of("path", path.toString(), "patches", List.of(patch)))));
 
         assertThat(testCalls).hasValue(1);
         assertThat(extraCalls).hasValue(1);
@@ -102,7 +112,8 @@ class IncludeTest {
 
     @Test
     void overridesConfigViaPatch() throws IOException {
-        Path path = writeConfig("""
+        Path path = writeConfig(
+                """
                 - id: test
                   name: test-plugin
                   config:
@@ -111,7 +122,10 @@ class IncludeTest {
         Context root = Context.create();
         Loader loader = new Loader(root);
         AtomicInteger calls = new AtomicInteger();
-        loader.mock("@cordisjs/plugin-include", (ctx, config) -> { Include include = new Include(ctx, (java.util.Map<String, Object>) config); return include.apply(ctx, config); });
+        loader.mock("@cordisjs/plugin-include", (ctx, config) -> {
+            Include include = new Include(ctx, (java.util.Map<String, Object>) config);
+            return include.apply(ctx, config);
+        });
         loader.mock("test-plugin", (ctx, config) -> {
             calls.incrementAndGet();
             assertThat(config).isInstanceOf(Map.class);
@@ -120,7 +134,8 @@ class IncludeTest {
         Map<String, Object> patch = new java.util.HashMap<>();
         patch.put("id", "test");
         patch.put("config", Map.of("custom", true));
-        loader.read(List.of(entry("inc", "@cordisjs/plugin-include", Map.of("path", path.toString(), "patches", List.of(patch)))));
+        loader.read(List.of(
+                entry("inc", "@cordisjs/plugin-include", Map.of("path", path.toString(), "patches", List.of(patch)))));
 
         assertThat(calls).hasValue(1);
     }
@@ -132,14 +147,13 @@ class IncludeTest {
         assertThat(ConfigParser.forPath("app.json")).isSameAs(ConfigParser.JSON);
         assertThat(ConfigParser.forPath("app.txt")).isSameAs(ConfigParser.JSON);
 
-        io.jcordis.loader.EntryOptions options = new io.jcordis.loader.EntryOptions.Builder()
-                .id("x")
-                .name("n")
-                .build();
+        io.jcordis.loader.EntryOptions options =
+                new io.jcordis.loader.EntryOptions.Builder().id("x").name("n").build();
         String yaml = ConfigParser.YAML.write(java.util.List.of(options));
         assertThat(yaml).contains("x").contains("n");
 
-        java.util.List<io.jcordis.loader.EntryOptions> parsed = ConfigParser.forPath("app.yml").read("""
+        java.util.List<io.jcordis.loader.EntryOptions> parsed = ConfigParser.forPath("app.yml")
+                .read("""
                 - id: y
                   name: plugin
                 """);

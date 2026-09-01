@@ -77,7 +77,8 @@ class ScaffolderTest {
         assertThat(pom).contains("<scope>provided</scope>");
         assertThat(pom).contains("<goal>check</goal>");
 
-        String sample = Files.readString(dir.resolve("src/main/java/demo/plugin/SamplePlugin.java"), StandardCharsets.UTF_8);
+        String sample =
+                Files.readString(dir.resolve("src/main/java/demo/plugin/SamplePlugin.java"), StandardCharsets.UTF_8);
         assertThat(sample).contains("package demo.plugin;");
         assertThat(sample).contains("implements Plugin");
 

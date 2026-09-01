@@ -5,7 +5,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 import io.jcordis.core.context.Context;
 import io.jcordis.core.registry.Plugin;
 import io.jcordis.core.service.ServiceKey;
-import java.util.Map;
 import org.junit.jupiter.api.Test;
 
 /** Demonstrates service provision, dependency injection and isolation realms. */

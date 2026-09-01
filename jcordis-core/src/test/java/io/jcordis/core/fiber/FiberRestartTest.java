@@ -47,10 +47,12 @@ class FiberRestartTest {
     void update_shouldRestartBodyWithNewConfig() {
         Context ctx = Context.create();
         AtomicReference<Object> seen = new AtomicReference<>();
-        Fiber fiber = ctx.plugin((c, config) -> {
-            seen.set(config);
-            return null;
-        }, Map.of("a", 1));
+        Fiber fiber = ctx.plugin(
+                (c, config) -> {
+                    seen.set(config);
+                    return null;
+                },
+                Map.of("a", 1));
         assertThat(seen.get()).isEqualTo(Map.of("a", 1));
 
         fiber.update(Map.of("a", 2), false);

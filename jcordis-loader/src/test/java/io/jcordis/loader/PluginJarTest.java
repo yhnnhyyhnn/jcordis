@@ -27,11 +27,14 @@ class PluginJarTest {
     @Test
     void hostClasspathPlugin_shouldNotShadowUploadedJar() throws Exception {
         // simulate a plugin jar (demo-plugin) on the host classpath: its SPI
-        // manifest is reachable through the parent class loader
+        // manifest is reachable through the parent class loader. The decoy
+        // class itself does not exist on the host classpath — fixture classes
+        // are compiled off it by design — what matters is that the uploaded
+        // jar's own manifest wins over any host-side manifest.
         Path serviceDir = Paths.get("target", "test-classes", "META-INF", "services");
         Files.createDirectories(serviceDir);
         Path serviceFile = serviceDir.resolve("io.jcordis.core.registry.Plugin");
-        Files.writeString(serviceFile, "io.jcordis.loader.fixture.SamplePlugin\n", StandardCharsets.UTF_8);
+        Files.writeString(serviceFile, ISOLATED + "\n", StandardCharsets.UTF_8);
         try {
             // an uploaded jar declares its own plugin — it must win over the host one
             Path jar = buildJar("uploaded-plugin.jar", ISOLATED);

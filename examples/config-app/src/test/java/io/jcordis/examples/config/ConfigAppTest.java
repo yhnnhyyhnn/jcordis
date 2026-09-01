@@ -3,11 +3,10 @@ package io.jcordis.examples.config;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import io.jcordis.core.context.Context;
-import io.jcordis.loader.include.Include;
 import io.jcordis.loader.EntryOptions;
 import io.jcordis.loader.Loader;
+import io.jcordis.loader.include.Include;
 import java.io.IOException;
-import java.net.URISyntaxException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -34,12 +33,15 @@ class ConfigAppTest {
     @Test
     void yamlConfigLoadsPlugins() throws IOException {
         Path config = tempDir.resolve("app.yml");
-        Files.writeString(config, """
+        Files.writeString(
+                config,
+                """
                 - id: feature-a
                   name: feature-plugin
                   config:
                     name: alpha
-                """, StandardCharsets.UTF_8);
+                """,
+                StandardCharsets.UTF_8);
 
         Context root = Context.create();
         Loader loader = new Loader(root);

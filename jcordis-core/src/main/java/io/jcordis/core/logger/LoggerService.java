@@ -61,11 +61,14 @@ public final class LoggerService {
 
     /** Registers an exporter, returning a disposable that unregisters it. */
     public Disposable exporter(Exporter exporter) {
-        return ctx.fiber().effect(runner -> {
-            int id = ++snExporter;
-            exporters.put(id, exporter);
-            return EffectResult.of(() -> exporters.remove(id));
-        }, "ctx.logger.exporter()");
+        return ctx.fiber()
+                .effect(
+                        runner -> {
+                            int id = ++snExporter;
+                            exporters.put(id, exporter);
+                            return EffectResult.of(() -> exporters.remove(id));
+                        },
+                        "ctx.logger.exporter()");
     }
 
     /** Returns a logger named after the context's intercept chain or fiber. */

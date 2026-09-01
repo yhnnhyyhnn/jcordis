@@ -74,7 +74,7 @@ mvn io.jcordis:jcordis-maven-plugin:0.1.0-SNAPSHOT:create-plugin -Dname=demo-plu
 
 ## 业务系统集成
 
-一个坐标获得全部 jcordis 模块（core/loader/utils/timer/logger-console/include/group/cli）：
+一个坐标获得整个运行时框架（core + loader，含已并入其中的 timer / console-exporter / include / group / utils 功能）：
 
 ```xml
 <dependency>
@@ -107,5 +107,5 @@ mvn io.jcordis:jcordis-maven-plugin:0.1.0-SNAPSHOT:create-plugin -Dname=demo-plu
 ## 构建与测试
 
 ```bash
-mvn clean verify   # 14/14 模块，146 测试全绿
+mvn clean verify   # 9/9 模块，171 测试全绿
 ```

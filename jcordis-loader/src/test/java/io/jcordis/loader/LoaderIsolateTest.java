@@ -3,11 +3,8 @@ package io.jcordis.loader;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import io.jcordis.core.context.Context;
-import io.jcordis.core.fiber.FiberState;
 import io.jcordis.core.registry.Plugin;
 import io.jcordis.core.service.Service;
-import io.jcordis.core.service.ServiceKey;
-import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;

@@ -37,46 +37,55 @@ public final class EventBus {
     public EventBus(Context ctx) {
         // intercepts non-global 'internal/update' registrations and stores the
         // listener on the fiber that registered it (fiber-local hooks)
-        on(ctx, "internal/listener", (thisArg, args) -> {
-            String name = (String) args[0];
-            EventHandler listener = (EventHandler) args[1];
-            EventOptions options = (EventOptions) args[2];
-            if ("internal/update".equals(name) && !options.global()) {
-                List<EventHandler> fiberHooks = ((Context) thisArg)
-                        .fiber()
-                        .hooks()
-                        .computeIfAbsent("internal/update", key -> new CopyOnWriteArrayList<>());
-                if (options.prepend()) {
-                    fiberHooks.add(0, listener);
-                } else {
-                    fiberHooks.add(listener);
-                }
-                return (Disposable) () -> fiberHooks.remove(listener);
-            }
-            return null;
-        }, EventOptions.of());
+        on(
+                ctx,
+                "internal/listener",
+                (thisArg, args) -> {
+                    String name = (String) args[0];
+                    EventHandler listener = (EventHandler) args[1];
+                    EventOptions options = (EventOptions) args[2];
+                    if ("internal/update".equals(name) && !options.global()) {
+                        List<EventHandler> fiberHooks = ((Context) thisArg)
+                                .fiber()
+                                .hooks()
+                                .computeIfAbsent("internal/update", key -> new CopyOnWriteArrayList<>());
+                        if (options.prepend()) {
+                            fiberHooks.add(0, listener);
+                        } else {
+                            fiberHooks.add(listener);
+                        }
+                        return (Disposable) () -> fiberHooks.remove(listener);
+                    }
+                    return null;
+                },
+                EventOptions.of());
 
         // global (and prepended) 'internal/update' handler: chains the
         // fiber-local listeners, then falls back to the waterfall tail
-        on(ctx, "internal/update", (thisArg, args) -> {
-            Fiber fiber = (Fiber) thisArg;
-            Object config = args[0];
-            boolean noSave = (Boolean) args[1];
-            @SuppressWarnings("unchecked")
-            Supplier<Object> next = (Supplier<Object>) args[2];
-            List<EventHandler> callbacks = new ArrayList<>(fiber.hooks().getOrDefault("internal/update", List.of()));
-            Object[] chainArgs = {config, noSave, null};
-            Supplier<Object>[] holder = new Supplier[1];
-            holder[0] = () -> {
-                EventHandler callback = callbacks.isEmpty() ? null : callbacks.remove(0);
-                if (callback == null) {
-                    return next.get();
-                }
-                return callback.invoke(fiber, chainArgs);
-            };
-            chainArgs[2] = holder[0];
-            return holder[0].get();
-        }, EventOptions.of(true, true));
+        on(
+                ctx,
+                "internal/update",
+                (thisArg, args) -> {
+                    Fiber fiber = (Fiber) thisArg;
+                    Object config = args[0];
+                    boolean noSave = (Boolean) args[1];
+                    @SuppressWarnings("unchecked")
+                    Supplier<Object> next = (Supplier<Object>) args[2];
+                    List<EventHandler> callbacks =
+                            new ArrayList<>(fiber.hooks().getOrDefault("internal/update", List.of()));
+                    Object[] chainArgs = {config, noSave, null};
+                    Supplier<Object>[] holder = new Supplier[1];
+                    holder[0] = () -> {
+                        EventHandler callback = callbacks.isEmpty() ? null : callbacks.remove(0);
+                        if (callback == null) {
+                            return next.get();
+                        }
+                        return callback.invoke(fiber, chainArgs);
+                    };
+                    chainArgs[2] = holder[0];
+                    return holder[0].get();
+                },
+                EventOptions.of(true, true));
     }
 
     // ----- registration -----
@@ -101,27 +110,34 @@ public final class EventBus {
 
     public Disposable once(Context ctx, String name, EventHandler listener, EventOptions options) {
         AtomicReference<Disposable> ref = new AtomicReference<>();
-        Disposable wrapper = on(ctx, name, (thisArg, args) -> {
-            Disposable disposable = ref.get();
-            if (disposable != null) {
-                disposable.dispose();
-            }
-            return listener.invoke(thisArg, args);
-        }, options);
+        Disposable wrapper = on(
+                ctx,
+                name,
+                (thisArg, args) -> {
+                    Disposable disposable = ref.get();
+                    if (disposable != null) {
+                        disposable.dispose();
+                    }
+                    return listener.invoke(thisArg, args);
+                },
+                options);
         ref.set(wrapper);
         return wrapper;
     }
 
     private Disposable register(
             Context ctx, List<Hook> target, EventHandler listener, EventOptions options, String label) {
-        return ctx.fiber().effect(runner -> {
-            if (options.prepend()) {
-                target.add(0, new Hook(ctx, listener, true, options.global()));
-            } else {
-                target.add(new Hook(ctx, listener, false, options.global()));
-            }
-            return EffectResult.of(() -> unregister(target, listener));
-        }, label);
+        return ctx.fiber()
+                .effect(
+                        runner -> {
+                            if (options.prepend()) {
+                                target.add(0, new Hook(ctx, listener, true, options.global()));
+                            } else {
+                                target.add(new Hook(ctx, listener, false, options.global()));
+                            }
+                            return EffectResult.of(() -> unregister(target, listener));
+                        },
+                        label);
     }
 
     private boolean unregister(List<Hook> target, EventHandler callback) {
@@ -137,7 +153,8 @@ public final class EventBus {
     // ----- dispatch -----
 
     private List<EventHandler> resolve(String mode, String name, Object thisArg, Object[] args) {
-        if (!name.startsWith("internal/") && !hooks.getOrDefault("internal/dispatch", List.of()).isEmpty()) {
+        if (!name.startsWith("internal/")
+                && !hooks.getOrDefault("internal/dispatch", List.of()).isEmpty()) {
             emit((Object) null, "internal/dispatch", mode, name, args, thisArg);
         }
         EventFilter filter = thisArg instanceof EventFilter eventFilter ? eventFilter : null;

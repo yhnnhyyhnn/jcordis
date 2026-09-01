@@ -4,10 +4,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import io.jcordis.core.context.Context;
 import io.jcordis.core.fiber.Fiber;
-import io.jcordis.loader.EntryOptions;
-import io.jcordis.loader.Loader;
 import io.jcordis.core.logger.ConsoleExporter;
 import io.jcordis.core.timer.TimerService;
+import io.jcordis.loader.EntryOptions;
+import io.jcordis.loader.Loader;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -35,17 +35,23 @@ class IncludeIntegrationTest {
     @Test
     void configFileDrivesLoaderWithTimerAndLogger() throws IOException {
         Path config = tempDir.resolve("app.yml");
-        Files.writeString(config, """
+        Files.writeString(
+                config,
+                """
                 - id: timer
                   name: timer-plugin
                 - id: logger
                   name: logger-plugin
-                """, StandardCharsets.UTF_8);
+                """,
+                StandardCharsets.UTF_8);
 
         Context root = Context.create();
         Loader loader = new Loader(root);
         AtomicInteger timerReady = new AtomicInteger();
-        loader.mock("@cordisjs/plugin-include", (ctx, cfg) -> { Include include = new Include(ctx, (Map<String, Object>) cfg); return include.apply(ctx, cfg); });
+        loader.mock("@cordisjs/plugin-include", (ctx, cfg) -> {
+            Include include = new Include(ctx, (Map<String, Object>) cfg);
+            return include.apply(ctx, cfg);
+        });
         loader.mock("timer-plugin", (ctx, cfg) -> {
             new TimerService(ctx);
             timerReady.incrementAndGet();

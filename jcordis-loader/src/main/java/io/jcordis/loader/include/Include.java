@@ -2,7 +2,6 @@ package io.jcordis.loader.include;
 
 import io.jcordis.core.context.Context;
 import io.jcordis.core.registry.Plugin;
-import io.jcordis.loader.Entry;
 import io.jcordis.loader.EntryOptions;
 import io.jcordis.loader.Loader;
 import java.io.IOException;
@@ -35,9 +34,7 @@ public class Include implements Plugin {
     public Include(Context ctx, Map<String, Object> config) {
         this.path = Paths.get((String) config.get("path"));
         this.initial = toEntryOptions(config.get("initial"));
-        this.patches = config.get("patches") instanceof List<?> list
-                ? castMaps(list)
-                : List.of();
+        this.patches = config.get("patches") instanceof List<?> list ? castMaps(list) : List.of();
     }
 
     @Override
@@ -46,6 +43,25 @@ public class Include implements Plugin {
         if (loader == null) {
             throw new IllegalStateException("include requires the loader service");
         }
+        // a plugin updating the include config (matching `path`) re-applies the
+        // parsed tree (mirrors Cordis's internal/update listener)
+        ctx.on(
+                "internal/update",
+                (thisArg, args) -> {
+                    Object updated = args.length > 0 ? args[0] : null;
+                    if (updated instanceof Map<?, ?> map
+                            && map.get("path") != null
+                            && map.get("path").equals(path.toString())
+                            && data != null) {
+                        loader.root.update(data);
+                        return null;
+                    }
+                    if (args.length > 2 && args[2] instanceof java.util.function.Supplier<?> next) {
+                        return next.get();
+                    }
+                    return null;
+                },
+                io.jcordis.core.event.EventOptions.of(true, true));
         try {
             if (!Files.exists(path)) {
                 if (initial == null) {
@@ -94,9 +110,8 @@ public class Include implements Plugin {
                         continue;
                     }
                     @SuppressWarnings("unchecked")
-                    List<EntryOptions> targetConfig = target.config instanceof List<?> l
-                            ? (List<EntryOptions>) l
-                            : new ArrayList<>();
+                    List<EntryOptions> targetConfig =
+                            target.config instanceof List<?> l ? (List<EntryOptions>) l : new ArrayList<>();
                     targetConfig.addAll(inserted);
                     target.config = targetConfig;
                 } else {
@@ -115,11 +130,15 @@ public class Include implements Plugin {
                 continue;
             }
             if (name != null && !name.equals(target.name)) {
-                loader.ctx().logger("loader").warn("patch: name mismatch for " + id + " (expected " + target.name + ", got " + name + ")");
+                loader.ctx()
+                        .logger("loader")
+                        .warn("patch: name mismatch for " + id + " (expected " + target.name + ", got " + name + ")");
                 continue;
             }
             for (Map.Entry<String, Object> kv : patch.entrySet()) {
-                if (kv.getKey().equals("id") || kv.getKey().equals("name") || kv.getKey().equals("insert")) continue;
+                if (kv.getKey().equals("id")
+                        || kv.getKey().equals("name")
+                        || kv.getKey().equals("insert")) continue;
                 applyOverride(target, kv.getKey(), kv.getValue());
             }
         }

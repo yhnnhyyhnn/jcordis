@@ -3,7 +3,6 @@ package io.jcordis.loader.include;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import io.jcordis.core.context.Context;
-import io.jcordis.loader.EntryOptions;
 import io.jcordis.loader.Loader;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -171,6 +170,7 @@ class HmrTest {
         // restore and change again: polling must stay stopped
         Files.writeString(configPath, config(), StandardCharsets.UTF_8);
         sleep(200);
-        assertThat(Boolean.TRUE.equals(loader.store.get("sample").options.disabled)).isEqualTo(afterDispose);
+        assertThat(Boolean.TRUE.equals(loader.store.get("sample").options.disabled))
+                .isEqualTo(afterDispose);
     }
 }

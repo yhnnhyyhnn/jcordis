@@ -2,7 +2,6 @@ package io.jcordis.core.util;
 
 import io.jcordis.core.context.Context;
 import io.jcordis.core.fiber.EffectResult;
-import io.jcordis.core.util.Disposable;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.NoSuchElementException;
@@ -48,10 +47,12 @@ public final class EffectList<T> implements Iterable<T> {
      * returned disposable is invoked.
      */
     public Disposable push(T value) {
-        return ctx.effect(runner -> {
-            inner.add(value);
-            return EffectResult.of(() -> inner.remove(value));
-        }, trace + ".push()");
+        return ctx.effect(
+                runner -> {
+                    inner.add(value);
+                    return EffectResult.of(() -> inner.remove(value));
+                },
+                trace + ".push()");
     }
 
     /** Returns a lazy filtered view of this list. */

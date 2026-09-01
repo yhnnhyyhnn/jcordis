@@ -3,7 +3,6 @@ package io.jcordis.loader;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import io.jcordis.core.context.Context;
-import io.jcordis.core.fiber.FiberState;
 import io.jcordis.core.registry.Plugin;
 import java.util.ArrayList;
 import java.util.List;
@@ -25,6 +24,104 @@ class LoaderBasicTest {
         EntryOptions options = entry(id, name);
         options.config = config;
         return options;
+    }
+
+    @Test
+    void partialDispose_shouldEmitWithLegacyOptions() {
+        Context root = Context.create();
+        Loader loader = new Loader(root);
+        java.util.List<Object[]> events = new java.util.ArrayList<>();
+        root.on("loader/partial-dispose", (thisArg, args) -> {
+            events.add(new Object[] {args[0], args[1], args[2]});
+            return null;
+        });
+        loader.mock("foo", (ctx, config) -> null);
+
+        EntryOptions options = entry("a", "foo");
+        options.config = java.util.Map.of("v", 1);
+        loader.create(options, null);
+        assertThat(events).isEmpty();
+
+        // config update on a live fiber emits the event with the legacy options
+        EntryOptions updated = entry("a", "foo");
+        updated.config = java.util.Map.of("v", 2);
+        loader.update("a", updated, null);
+
+        assertThat(events).hasSize(1);
+        Entry entry = (Entry) events.get(0)[0];
+        EntryOptions.Snapshot legacy = (EntryOptions.Snapshot) events.get(0)[1];
+        assertThat(events.get(0)[2]).isEqualTo(true);
+        assertThat(entry.options.config).isEqualTo(java.util.Map.of("v", 2));
+        assertThat(legacy).isNotNull();
+    }
+
+    @Test
+    void locate_shouldFindEntryIdOfFiber() {
+        Context root = Context.create();
+        Loader loader = new Loader(root);
+        loader.mock("foo", (ctx, config) -> null);
+
+        EntryOptions options = entry("a", "foo");
+        loader.create(options, null);
+        io.jcordis.core.fiber.Fiber fiber = loader.expectFiber("a");
+
+        assertThat(loader.locate(fiber)).isEqualTo("a");
+        assertThat(loader.locate(fiber.ctx().fiber())).isEqualTo("a");
+        assertThat(loader.locate(root.fiber())).isNull();
+    }
+
+    @Test
+    void groupPluginIdentity_shouldMarkEntryAsGroup() {
+        Context root = Context.create();
+        Loader loader = new Loader(root);
+        AtomicInteger childCalls = new AtomicInteger();
+        loader.mock("child", (ctx, config) -> {
+            childCalls.incrementAndGet();
+            return null;
+        });
+
+        // a group entry referencing the group plugin itself (no `group: true`)
+        EntryOptions groupEntry = new EntryOptions();
+        groupEntry.id = "outer";
+        groupEntry.name = "@cordisjs/plugin-group";
+        groupEntry.config = List.of(entry("c", "child"));
+        loader.create(groupEntry, null);
+
+        assertThat(childCalls).hasValue(1);
+        assertThat(loader.entries()).hasSize(2);
+    }
+
+    @Test
+    void loaderAwait_shouldGateDependentsUntilTasksSettle() {
+        Context root = Context.create().intercept("loader", java.util.Map.of("await", true));
+        Loader loader = new Loader(root);
+        AtomicInteger aCalls = new AtomicInteger();
+        AtomicInteger bCalls = new AtomicInteger();
+        CompletableFuture<Object> gate = new CompletableFuture<>();
+        loader.mock("a", (ctx, config) -> {
+            aCalls.incrementAndGet();
+            return gate;
+        });
+        loader.mock("b", (ctx, config) -> {
+            bCalls.incrementAndGet();
+            return null;
+        });
+
+        EntryOptions a = entry("a", "a");
+        EntryOptions b = entry("b", "b");
+        b.inject = new java.util.HashMap<>();
+        b.inject.put("loader", null);
+        loader.read(List.of(a, b));
+
+        // a is still loading → loader check fails → b must stay unloaded
+        assertThat(aCalls).hasValue(1);
+        assertThat(bCalls).as("b gated by await config").hasValue(0);
+
+        gate.complete(null);
+        loader.await();
+
+        // once a's load settles, 'loader' is re-notified and b resolves
+        assertThat(bCalls).as("b loads after tasks settle").hasValue(1);
     }
 
     @Test

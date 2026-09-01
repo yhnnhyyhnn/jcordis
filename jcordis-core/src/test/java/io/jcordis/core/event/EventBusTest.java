@@ -121,16 +121,18 @@ class EventBusTest {
         holder.set((thisArg, args) -> {
             throw new RuntimeException("test");
         });
-        root.on(EVENT, (thisArg, args) -> CompletableFuture.runAsync(() -> {
-            try {
-                Thread.sleep(10);
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                throw new RuntimeException(e);
-            }
-            settled.set(true);
-            throw new RuntimeException("async");
-        }));
+        root.on(
+                EVENT,
+                (thisArg, args) -> CompletableFuture.runAsync(() -> {
+                    try {
+                        Thread.sleep(10);
+                    } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
+                        throw new RuntimeException(e);
+                    }
+                    settled.set(true);
+                    throw new RuntimeException("async");
+                }));
 
         Throwable error = root.parallel(EVENT).handle((value, e) -> e).join();
         assertThat(error).hasRootCauseInstanceOf(AggregateError.class);
@@ -165,7 +167,9 @@ class EventBusTest {
             throw new RuntimeException("test");
         });
 
-        assertThatThrownBy(() -> root.emit(EVENT)).isInstanceOf(RuntimeException.class).hasMessage("test");
+        assertThatThrownBy(() -> root.emit(EVENT))
+                .isInstanceOf(RuntimeException.class)
+                .hasMessage("test");
         dispose.dispose();
     }
 
@@ -224,7 +228,9 @@ class EventBusTest {
             throw new RuntimeException("message");
         });
 
-        assertThatThrownBy(() -> root.bail(EVENT)).isInstanceOf(RuntimeException.class).hasMessage("message");
+        assertThatThrownBy(() -> root.bail(EVENT))
+                .isInstanceOf(RuntimeException.class)
+                .hasMessage("message");
         dispose.dispose();
     }
 
@@ -277,12 +283,15 @@ class EventBusTest {
         Context root = Context.create();
         List<Object> seen = new ArrayList<>();
 
-        root.on("internal/update", (thisArg, args) -> {
-            seen.add(args[0]);
-            @SuppressWarnings("unchecked")
-            Supplier<Object> next = (Supplier<Object>) args[2];
-            return next.get();
-        }, EventOptions.of(false, false));
+        root.on(
+                "internal/update",
+                (thisArg, args) -> {
+                    seen.add(args[0]);
+                    @SuppressWarnings("unchecked")
+                    Supplier<Object> next = (Supplier<Object>) args[2];
+                    return next.get();
+                },
+                EventOptions.of(false, false));
 
         root.fiber().update("new-config", false);
 

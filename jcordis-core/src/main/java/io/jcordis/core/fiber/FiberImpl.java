@@ -1,7 +1,6 @@
 package io.jcordis.core.fiber;
 
 import io.jcordis.core.context.Context;
-import io.jcordis.core.context.ContextImpl;
 import io.jcordis.core.event.EventHandler;
 import io.jcordis.core.reflect.Impl;
 import io.jcordis.core.registry.PluginRuntime;
@@ -40,21 +39,24 @@ public final class FiberImpl implements Fiber {
     private static final String INACTIVE = "__INACTIVE__";
 
     private final FiberImpl parent;
-    private final Context ctx;
     private final String name;
     private final List<Disposable> disposables = new ArrayList<>();
+    private final List<EffectMeta> effectMetas = new ArrayList<>();
     private final AtomicBoolean disposed = new AtomicBoolean(false);
     private final Map<String, List<EventHandler>> hooks = new ConcurrentHashMap<>();
     private final Map<String, Object> inject = new HashMap<>();
     private final Map<String, Impl> store = new HashMap<>();
     private final PluginRuntime runtime;
 
+    private volatile Context ctx;
     private volatile int uid;
     private volatile FiberState state;
     private volatile Object config;
     private volatile Object entry;
     private volatile String epoch;
     private volatile CompletableFuture<Void> inertia;
+    /** Body failure captured by {@link #reload}; cleared only by {@link #update}. */
+    private volatile Throwable error;
 
     @Override
     public Object entry() {
@@ -89,11 +91,14 @@ public final class FiberImpl implements Fiber {
         }
 
         // register the plugin lifecycle as an effect on the parent fiber
-        parent.fiber().effect(runner -> {
-            runtime.fibers().add(this);
-            refresh();
-            return EffectResult.of(() -> unload());
-        }, "ctx.plugin()");
+        parent.fiber()
+                .effect(
+                        runner -> {
+                            runtime.fibers().add(this);
+                            refresh();
+                            return EffectResult.of(() -> unload());
+                        },
+                        "ctx.plugin()");
     }
 
     private FiberImpl(Context ctx, String name, Object config, Map<String, Object> inject) {
@@ -163,13 +168,24 @@ public final class FiberImpl implements Fiber {
     }
 
     @Override
+    public void rebindContext(Context ctx) {
+        this.ctx = ctx.child(this);
+    }
+
+    @Override
+    public CompletableFuture<Void> inertia() {
+        return inertia;
+    }
+
+    @Override
     public void update(Object config, boolean noSave) {
         assertActive();
-        ctx.events()
-                .waterfall(this, "internal/update", new Object[] {config, noSave}, args -> {
-                    updateConfig(config);
-                    return restart();
-                });
+        ctx.events().waterfall(this, "internal/update", new Object[] {config, noSave}, args -> {
+            updateConfig(config);
+            // a failed fiber only recovers through update() (mirrors Cordis)
+            error = null;
+            return restart();
+        });
     }
 
     @Override
@@ -188,20 +204,63 @@ public final class FiberImpl implements Fiber {
         assertActive();
         List<Disposable> collected = new ArrayList<>();
         EffectResult result = runner.run(ctx);
-        switch (result) {
-            case EffectResult.Noop ignored -> {}
-            case EffectResult.Single(Disposable disposable) -> collected.add(disposable);
-            case EffectResult.Multiple(List<Disposable> list) -> collected.addAll(list);
+        EffectMeta meta = new EffectMeta(label, new ArrayList<>());
+        if (result instanceof EffectResult.Noop) {
+            // no disposables
+        } else if (result instanceof EffectResult.Single single) {
+            collectEffect(collected, meta, single.disposable());
+        } else if (result instanceof EffectResult.Multiple multiple) {
+            for (Disposable disposable : multiple.disposables()) {
+                collectEffect(collected, meta, disposable);
+            }
         }
         AtomicBoolean once = new AtomicBoolean(false);
-        Disposable wrapper = () -> {
+        EffectDisposable wrapper = new EffectDisposable(meta, () -> {
             if (!once.compareAndSet(false, true)) return;
             for (int i = collected.size() - 1; i >= 0; i--) {
                 collected.get(i).dispose();
             }
-        };
+        });
         disposables.add(wrapper);
+        effectMetas.add(meta);
         return wrapper;
+    }
+
+    private void collectEffect(List<Disposable> collected, EffectMeta meta, Disposable disposable) {
+        collected.add(disposable);
+        if (disposable instanceof EffectDisposable child) {
+            meta.children().add(child.meta());
+            // the nested effect is now owned by the outer disposer: remove it
+            // from the fiber's own list so teardown does not double-manage it
+            // (mirrors Cordis's `_disposables.delete(dispose)` in collect)
+            disposables.remove(child);
+            effectMetas.remove(child.meta());
+        }
+    }
+
+    /** A disposable carrying its effect metadata (so nested effects become children). */
+    private static final class EffectDisposable implements Disposable {
+        private final EffectMeta meta;
+        private final Disposable delegate;
+
+        EffectDisposable(EffectMeta meta, Disposable delegate) {
+            this.meta = meta;
+            this.delegate = delegate;
+        }
+
+        EffectMeta meta() {
+            return meta;
+        }
+
+        @Override
+        public void dispose() {
+            delegate.dispose();
+        }
+    }
+
+    @Override
+    public List<EffectMeta> getEffects() {
+        return List.copyOf(effectMetas);
     }
 
     @Override
@@ -217,6 +276,18 @@ public final class FiberImpl implements Fiber {
         if (impl == null) {
             store.remove(name);
             return;
+        }
+        if (impl.check() != null) {
+            try {
+                if (!impl.check().test(impl.value())) {
+                    store.remove(name);
+                    return;
+                }
+            } catch (Throwable error) {
+                impl.fiber().ctx().logger().error(error);
+                store.remove(name);
+                return;
+            }
         }
         store.put(name, impl);
     }
@@ -237,6 +308,8 @@ public final class FiberImpl implements Fiber {
     }
 
     private void setEpoch(String newEpoch) {
+        // a failed fiber only recovers through update(), which clears the error
+        if (error != null) return;
         if (Objects.equals(newEpoch, epoch)) return;
         String oldEpoch = epoch;
         epoch = newEpoch;
@@ -257,30 +330,68 @@ public final class FiberImpl implements Fiber {
         }
     }
 
+    /**
+     * Sets the lifecycle state, emitting {@code internal/status} with the old
+     * value (mirrors Cordis's {@code _updateState}). Constructor-time and
+     * root-fiber assignments set the field directly.
+     */
+    private void transitionState(FiberState next) {
+        FiberState old = state;
+        if (old == next) return;
+        state = next;
+        ctx.events().emit((Object) null, "internal/status", this, old);
+    }
+
     private void reload() {
-        state = FiberState.LOADING;
+        transitionState(FiberState.LOADING);
         try {
             Object result = runtime.callback().apply(ctx, config);
             if (result instanceof CompletableFuture<?> pending) {
                 @SuppressWarnings("unchecked")
                 CompletableFuture<Object> future = (CompletableFuture<Object>) pending;
-                inertia = future.thenAccept(value -> {
-                    if (value instanceof Disposable disposable) {
-                        disposables.add(disposable);
+                inertia = future.handle((value, failure) -> {
+                    if (failure != null) {
+                        handleBodyFailure(unwrapCause(failure));
+                    } else {
+                        if (value instanceof Disposable disposable) {
+                            disposables.add(disposable);
+                        }
+                        transitionState(FiberState.ACTIVE);
+                        notifyServices();
                     }
-                    state = FiberState.ACTIVE;
-                    notifyServices();
+                    // mark the load as settled so tree task tracking sees it
+                    inertia = null;
+                    return null;
                 });
             } else {
                 if (result instanceof Disposable disposable) {
                     disposables.add(disposable);
                 }
-                state = FiberState.ACTIVE;
+                transitionState(FiberState.ACTIVE);
                 notifyServices();
             }
-        } catch (Throwable error) {
-            state = FiberState.FAILED;
+        } catch (Throwable failure) {
+            handleBodyFailure(failure);
         }
+    }
+
+    /**
+     * Records a plugin body failure: logs it, reverts the dependency epoch to
+     * inactive (so no further transitions occur) and unloads the partial body.
+     * Mirrors Cordis's {@code _reload} catch path.
+     */
+    private void handleBodyFailure(Throwable failure) {
+        error = failure;
+        ctx.logger().error(failure);
+        epoch = INACTIVE;
+        unloadBody();
+        transitionState(FiberState.FAILED);
+    }
+
+    private static Throwable unwrapCause(Throwable failure) {
+        return failure instanceof java.util.concurrent.CompletionException e && e.getCause() != null
+                ? e.getCause()
+                : failure;
     }
 
     private void unloadBody() {
@@ -288,8 +399,9 @@ public final class FiberImpl implements Fiber {
             disposables.get(i).dispose();
         }
         disposables.clear();
+        effectMetas.clear();
         store.clear();
-        state = FiberState.PENDING;
+        transitionState(FiberState.PENDING);
     }
 
     private void notifyServices() {
@@ -313,12 +425,17 @@ public final class FiberImpl implements Fiber {
             disposables.get(i).dispose();
         }
         disposables.clear();
+        effectMetas.clear();
         store.clear();
-        state = FiberState.DISPOSED;
+        transitionState(FiberState.DISPOSED);
     }
 
     @Override
     public CompletableFuture<Fiber> await() {
+        Throwable failure = error;
+        if (failure != null) {
+            return CompletableFuture.failedFuture(failure);
+        }
         CompletableFuture<Void> task = inertia;
         if (task == null) {
             return CompletableFuture.completedFuture(this);
@@ -334,6 +451,7 @@ public final class FiberImpl implements Fiber {
     /** Clears all registered effects (used after framework setup). */
     public void clearEffects() {
         disposables.clear();
+        effectMetas.clear();
     }
 
     @Override
@@ -341,7 +459,7 @@ public final class FiberImpl implements Fiber {
         if (runtime == null) {
             return CompletableFuture.runAsync(() -> {
                 if (!disposed.compareAndSet(false, true)) return;
-                state = FiberState.UNLOADING;
+                transitionState(FiberState.UNLOADING);
                 RuntimeException failure = null;
                 for (int i = disposables.size() - 1; i >= 0; i--) {
                     try {
@@ -351,7 +469,7 @@ public final class FiberImpl implements Fiber {
                     }
                 }
                 disposables.clear();
-                state = FiberState.DISPOSED;
+                transitionState(FiberState.DISPOSED);
                 if (failure != null) throw failure;
             });
         }

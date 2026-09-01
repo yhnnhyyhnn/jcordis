@@ -25,6 +25,9 @@ public final class Entry {
     public volatile Fiber fiber;
     public volatile boolean loaded;
 
+    /** Pending initialization task (entries load synchronously, so usually null). */
+    public volatile Object _initTask;
+
     private volatile Realm localRealm;
 
     Entry(EntryGroup parent) {
@@ -63,6 +66,11 @@ public final class Entry {
 
     /** Applies new options, reinitializing or updating the fiber as needed. */
     public void update(EntryOptions source, boolean create, boolean force) {
+        // capture the config before it is overwritten so a restart-on-change
+        // comparison can detect actual differences (copyInto assigns the same
+        // reference to both fields, making a post-copy comparison tautological)
+        EntryOptions.Snapshot legacy = options.snapshot();
+        Object legacyConfig = options.config;
         if (create) {
             copyInto(source, options);
         } else {
@@ -83,9 +91,13 @@ public final class Entry {
 
         if (fiber == null) {
             init();
-        } else if (force || !java.util.Objects.equals(options.config, source.config)) {
-            applyIntercept();
-            applyIsolate();
+        } else if (force || !java.util.Objects.equals(options.config, legacyConfig)) {
+            // mirror Cordis: emit the partial-dispose event before reloading
+            ctx.events().emit((Object) null, "loader/partial-dispose", this, legacy, true);
+            rebuildCtx();
+            // propagate the rebuilt intercept/isolate context onto the running
+            // fiber before restart (mirrors Cordis's Object.setPrototypeOf patch)
+            fiber.rebindContext(ctx);
             fiber.update(resolveConfig(), true);
         }
     }
@@ -120,49 +132,58 @@ public final class Entry {
         return options.config;
     }
 
-    private void applyIntercept() {
-        if (options.intercept == null) return;
-        for (Map.Entry<String, Object> entry : options.intercept.entrySet()) {
-            ctx = ctx.intercept(entry.getKey(), entry.getValue());
-        }
-    }
-
     /**
-     * Applies the {@code isolate} option: each {@code name} is mapped to a
-     * realm key ({@code true} → per-entry {@link LocalRealm}, a string label →
-     * shared {@link GlobalRealm}) and the entry context is re-isolated on it.
+     * Rebuilds the entry context from its parent's tree context, applying the
+     * current {@code intercept} and {@code isolate} options exactly once.
+     *
+     * <p>Rebuilding (rather than layering {@code ctx.intercept(...)} onto the
+     * previous context) keeps the context chain from growing on every update
+     * and lets the loader propagate option changes onto the running fiber.
      */
-    private void applyIsolate() {
-        if (options.isolate == null) return;
-        for (Map.Entry<String, Object> entry : options.isolate.entrySet()) {
-            Object label = entry.getValue();
-            io.jcordis.core.service.ServiceKey<?> key;
-            if (Boolean.TRUE.equals(label)) {
-                if (localRealm == null) {
-                    localRealm = new LocalRealm(this);
-                }
-                key = localRealm.access(entry.getKey(), true);
-            } else if (label instanceof String s) {
-                key = tree.loader().realm(s).access(entry.getKey(), true);
-            } else {
-                continue;
+    private void rebuildCtx() {
+        ctx = parent.ctx.extend();
+        if (options.intercept != null) {
+            for (Map.Entry<String, Object> entry : options.intercept.entrySet()) {
+                ctx = ctx.intercept(entry.getKey(), entry.getValue());
             }
-            ctx = ctx.isolate(entry.getKey(), key);
+        }
+        if (options.isolate != null) {
+            for (Map.Entry<String, Object> entry : options.isolate.entrySet()) {
+                Object label = entry.getValue();
+                io.jcordis.core.service.ServiceKey<?> key;
+                if (Boolean.TRUE.equals(label)) {
+                    if (localRealm == null) {
+                        localRealm = new LocalRealm(this);
+                    }
+                    key = localRealm.access(entry.getKey(), true);
+                } else if (label instanceof String s) {
+                    key = tree.loader().realm(s).access(entry.getKey(), true);
+                } else {
+                    continue;
+                }
+                ctx = ctx.isolate(entry.getKey(), key);
+            }
         }
     }
 
     private void init() {
         if (disabled()) return;
-        applyIntercept();
-        applyIsolate();
-        boolean isGroup = Boolean.TRUE.equals(options.group) || isGroupPlugin(options.name);
-        Plugin plugin = isGroup ? Loader.GROUP_PLUGIN : tree.importPlugin(options.name);
+        rebuildCtx();
+        Plugin plugin = tree.importPlugin(options.name);
+        // a group entry is either declared `group: true` or resolves to the
+        // group plugin itself (identity check, mirroring Cordis's
+        // `plugin[EntryGroup.key]` marker — not a name match)
+        boolean isGroup = Boolean.TRUE.equals(options.group) || plugin == Loader.GROUP_PLUGIN;
+        if (isGroup) {
+            plugin = Loader.GROUP_PLUGIN;
+        }
         if (plugin == null) {
             tree.loader().ctx().logger().error("cannot resolve plugin " + options.name);
             return;
         }
         tree.loader().showLog(this, "apply");
-        Fiber f = ctx.registry().plugin(ctx, plugin, resolveConfig());
+        Fiber f =
+                ctx.registry().plugin(ctx, plugin, resolveConfig(), options.inject != null ? options.inject : Map.of());
         f.setEntry(this);
         fiber = f;
         if (isGroup) {
@@ -173,17 +194,23 @@ public final class Entry {
             subtree = null;
             initGroupInternal();
             // stop the subgroup when the group fiber is disposed
-            f.effect(runner -> io.jcordis.core.fiber.EffectResult.of(() -> {
-                if (subgroup != null) {
-                    subgroup.stop();
-                }
-            }), "group.dispose()");
+            f.effect(
+                    runner -> io.jcordis.core.fiber.EffectResult.of(() -> {
+                        if (subgroup != null) {
+                            subgroup.stop();
+                        }
+                    }),
+                    "group.dispose()");
         }
         loaded = true;
-    }
-
-    private boolean isGroupPlugin(String name) {
-        return name != null && name.contains("plugin-group");
+        // mirror Cordis's Entry.init tail: once the fiber's async load work
+        // settles (and no other task is pending), re-notify 'loader' so
+        // dependents gated by the await config are re-checked
+        f.await().whenComplete((ignored, error) -> {
+            if (tree.getTasks().isEmpty()) {
+                ctx.reflect().notify(java.util.List.of("loader"), ctx);
+            }
+        });
     }
 
     /** Initializes the subgroup of a group entry (called by the group plugin). */
@@ -207,7 +234,8 @@ public final class Entry {
         if (options.config instanceof java.util.List<?> list) {
             for (Object item : list) {
                 if (item instanceof EntryOptions entryOptions) {
-                    if (entryOptions.id != null && subtree.store.get(entryOptions.id) != null
+                    if (entryOptions.id != null
+                            && subtree.store.get(entryOptions.id) != null
                             && subtree.store.get(entryOptions.id).fiber == null) {
                         subtree.store.get(entryOptions.id).update(entryOptions, false, true);
                     } else {

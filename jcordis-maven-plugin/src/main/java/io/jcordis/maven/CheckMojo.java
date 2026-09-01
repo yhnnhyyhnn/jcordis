@@ -24,8 +24,7 @@ public class CheckMojo extends AbstractMojo {
 
     /** Class-name prefixes that must never appear inside a plugin jar. */
     private static final String[] FORBIDDEN_PREFIXES = {
-        "com/fasterxml/", "org/slf4j/", "org/junit/", "org/assertj/",
-        "org/apache/maven/", "io/jcordis/",
+        "com/fasterxml/", "org/slf4j/", "org/junit/", "org/assertj/", "org/apache/maven/", "io/jcordis/",
     };
 
     @Parameter(defaultValue = "${project.build.directory}", readonly = true, required = true)

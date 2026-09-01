@@ -19,12 +19,85 @@ class FiberEffectTest {
     void effect_shouldRunRunnerImmediately() {
         List<String> log = new ArrayList<>();
 
-        ctx.effect(r -> {
-            log.add("run");
-            return EffectResult.of(() -> log.add("dispose"));
-        }, "test");
+        ctx.effect(
+                r -> {
+                    log.add("run");
+                    return EffectResult.of(() -> log.add("dispose"));
+                },
+                "test");
 
         assertThat(log).containsExactly("run");
+    }
+
+    @Test
+    void getEffects_shouldExposeLabelsAndNesting() {
+        List<String> log = new ArrayList<>();
+
+        Disposable outer = ctx.effect(
+                r -> {
+                    Disposable inner =
+                            ctx.effect(r2 -> EffectResult.of(() -> log.add("inner-dispose")), "ctx.on(\"custom\")");
+                    return EffectResult.of(() -> log.add("outer-dispose"), inner);
+                },
+                "outer");
+
+        List<EffectMeta> effects = ctx.fiber().getEffects();
+        assertThat(effects).hasSize(1);
+        assertThat(effects.get(0).label()).isEqualTo("outer");
+        assertThat(effects.get(0).children()).extracting(EffectMeta::label).containsExactly("ctx.on(\"custom\")");
+
+        outer.dispose();
+        assertThat(log).containsExactly("inner-dispose", "outer-dispose");
+        ctx.fiber().disposeAsync().join();
+        assertThat(log).containsExactly("inner-dispose", "outer-dispose");
+    }
+
+    @Test
+    void internalStatus_shouldReportStateTransitions() {
+        List<String> transitions = new ArrayList<>();
+        ctx.on("internal/status", (thisArg, args) -> {
+            Fiber fiber = (Fiber) args[0];
+            FiberState oldState = (FiberState) args[1];
+            transitions.add(oldState + "->" + fiber.state());
+            return null;
+        });
+
+        Fiber fiber = ctx.plugin((c, config) -> null);
+        assertThat(transitions).contains("PENDING->LOADING", "LOADING->ACTIVE");
+
+        fiber.disposeAsync().join();
+        assertThat(transitions).contains("ACTIVE->DISPOSED");
+    }
+
+    @Test
+    void internalGet_shouldAllowInterception() {
+        ctx.on("internal/get", (thisArg, args) -> {
+            // intercept access to "secret" and substitute a value
+            if ("secret".equals(args[1])) {
+                return "masked";
+            }
+            @SuppressWarnings("unchecked")
+            java.util.function.Supplier<Object> next = (java.util.function.Supplier<Object>) args[2];
+            return next.get();
+        });
+        ctx.provide("secret", "real");
+
+        assertThat(ctx.<Object>get("secret")).isEqualTo("masked");
+    }
+
+    @Test
+    void internalSet_shouldAllowRejection() {
+        ctx.provide("counter", null);
+        ctx.on("internal/set", (thisArg, args) -> {
+            if ("counter".equals(args[1])) {
+                throw new IllegalStateException("read-only");
+            }
+            @SuppressWarnings("unchecked")
+            java.util.function.Supplier<Object> next = (java.util.function.Supplier<Object>) args[2];
+            return next.get();
+        });
+
+        assertThatThrownBy(() -> ctx.set("counter", 1)).hasMessageContaining("read-only");
     }
 
     @Test
@@ -52,10 +125,8 @@ class FiberEffectTest {
     void multipleDisposables_shouldDisposeInReverseOrder() {
         List<String> log = new ArrayList<>();
 
-        ctx.effect(r -> EffectResult.of(
-                () -> log.add("first"),
-                () -> log.add("second"),
-                () -> log.add("third")), "test");
+        ctx.effect(
+                r -> EffectResult.of(() -> log.add("first"), () -> log.add("second"), () -> log.add("third")), "test");
         ctx.fiber().disposeAsync().join();
 
         assertThat(log).containsExactly("third", "second", "first");

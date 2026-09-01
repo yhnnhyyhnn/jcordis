@@ -5,6 +5,7 @@ import io.jcordis.core.registry.Plugin;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
@@ -133,8 +134,31 @@ public abstract class EntryTree {
     /** Persists the current tree state. */
     public abstract void write();
 
+    /** Pending entry tasks (initialization or in-flight fiber work). */
+    public List<Object> getTasks() {
+        List<Object> tasks = new ArrayList<>();
+        for (Entry entry : entries()) {
+            if (entry._initTask != null) {
+                tasks.add(entry._initTask);
+            }
+            if (entry.fiber != null && entry.fiber.inertia() != null) {
+                tasks.add(entry.fiber.inertia());
+            }
+        }
+        return tasks;
+    }
+
     /** Waits for all pending entry tasks to settle. */
     public void await() {
-        // entries load synchronously in this port
+        while (true) {
+            List<Object> tasks = getTasks();
+            if (tasks.isEmpty()) return;
+            CompletableFuture<?>[] futures = tasks.stream()
+                    .map(task -> task instanceof CompletableFuture<?> future
+                            ? future
+                            : CompletableFuture.completedFuture(null))
+                    .toArray(CompletableFuture[]::new);
+            CompletableFuture.allOf(futures).handle((ignored, error) -> null).join();
+        }
     }
 }

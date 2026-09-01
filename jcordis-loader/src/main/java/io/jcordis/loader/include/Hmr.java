@@ -114,10 +114,15 @@ public final class Hmr implements Runnable {
 
     /** Registers an {@code hmr/reload} listener (for tests). */
     public Disposable onReload(EventHandler handler) {
-        return ctx.events().on(ctx, "hmr/reload", (thisArg, args) -> {
-            handler.accept(args);
-            return null;
-        }, EventOptions.of());
+        return ctx.events()
+                .on(
+                        ctx,
+                        "hmr/reload",
+                        (thisArg, args) -> {
+                            handler.accept(args);
+                            return null;
+                        },
+                        EventOptions.of());
     }
 
     @FunctionalInterface

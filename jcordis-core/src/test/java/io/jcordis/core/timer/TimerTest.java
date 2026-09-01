@@ -5,7 +5,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 import io.jcordis.core.context.Context;
 import io.jcordis.core.util.Disposable;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
 
@@ -31,9 +30,11 @@ class TimerTest {
         Context root = setup();
         AtomicInteger calls = new AtomicInteger();
         root.plugin((ctx, config) -> {
-            ctx.get("timer");
-            return null;
-        }).await().join();
+                    ctx.get("timer");
+                    return null;
+                })
+                .await()
+                .join();
         TimerService timer = (TimerService) root.get("timer");
 
         timer.timeout(calls::incrementAndGet, 50);
@@ -89,11 +90,13 @@ class TimerTest {
         Context root = Context.create();
         AtomicInteger calls = new AtomicInteger();
         io.jcordis.core.fiber.Fiber fiber = root.plugin((ctx, config) -> {
-            new TimerService(ctx);
-            TimerService timer = (TimerService) ctx.get("timer");
-            timer.interval(calls::incrementAndGet, 20);
-            return null;
-        }).await().join();
+                    new TimerService(ctx);
+                    TimerService timer = (TimerService) ctx.get("timer");
+                    timer.interval(calls::incrementAndGet, 20);
+                    return null;
+                })
+                .await()
+                .join();
 
         sleep(100);
         assertThat(calls.get()).isGreaterThanOrEqualTo(1);

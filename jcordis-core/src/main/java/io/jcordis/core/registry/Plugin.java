@@ -32,8 +32,29 @@ public interface Plugin {
         return Map.of();
     }
 
-    /** Wraps a class plugin: instantiate with ctx/config and run its init hook. */
-    static Plugin constructor(Class<?> clazz) {
+    /**
+     * Wraps a class plugin: instantiate with ctx/config and run its init hook.
+     * Instances are cached per class so that {@code plugin(Class)} calls share a
+     * single registry runtime, mirroring Cordis keying runtimes by the resolved
+     * callback (the class itself) rather than by a wrapper instance.
+     */
+    public static Plugin constructor(Class<?> clazz) {
+        return ConstructorCache.computeIfAbsent(clazz, Plugin::createConstructorPlugin);
+    }
+
+    /** Per-class cache holder (interfaces cannot declare private fields). */
+    final class ConstructorCache {
+        private static final java.util.concurrent.ConcurrentHashMap<Class<?>, Plugin> CACHE =
+                new java.util.concurrent.ConcurrentHashMap<>();
+
+        private ConstructorCache() {}
+
+        static Plugin computeIfAbsent(Class<?> clazz, java.util.function.Function<Class<?>, Plugin> factory) {
+            return CACHE.computeIfAbsent(clazz, factory);
+        }
+    }
+
+    private static Plugin createConstructorPlugin(Class<?> clazz) {
         return new Plugin() {
             @Override
             public Object apply(Context ctx, Object config) {

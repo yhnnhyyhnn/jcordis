@@ -130,11 +130,15 @@ public final class ContextImpl implements Context {
         if (prop != null) {
             return (T) prop;
         }
-        if (fiber().state() == FiberState.DISPOSED && fiber().inject().containsKey(name)) {
-            throw new IllegalStateException("cannot get required service \"" + name + "\" in inactive context");
-        }
-        Object value = reflect().get(name, this);
-        return value != null ? (T) value : null;
+        // service access goes through the internal/get waterfall (mirrors
+        // Cordis's proxy handler); the default tail resolves from the store
+        return (T) events().waterfall((Object) null, "internal/get", new Object[] {this, name}, args -> {
+            if (fiber().state() == FiberState.DISPOSED && fiber().inject().containsKey(name)) {
+                throw new IllegalStateException("cannot get required service \"" + name + "\" in inactive context");
+            }
+            Object value = reflect().get(name, this);
+            return value != null ? value : null;
+        });
     }
 
     @Override
@@ -149,7 +153,10 @@ public final class ContextImpl implements Context {
 
     @Override
     public <T> void set(String name, T value) {
-        reflect().set(name, value, this);
+        events().waterfall((Object) null, "internal/set", new Object[] {this, name, value}, args -> {
+            reflect().set(name, value, this);
+            return null;
+        });
     }
 
     @Override

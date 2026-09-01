@@ -23,11 +23,15 @@ class PluginRegistryTest {
         AtomicInteger calls = new AtomicInteger();
         Object options = Map.of("foo", "bar");
 
-        root.plugin((ctx, config) -> {
-            calls.incrementAndGet();
-            assertThat(config).isEqualTo(options);
-            return null;
-        }, options).await().join();
+        root.plugin(
+                        (ctx, config) -> {
+                            calls.incrementAndGet();
+                            assertThat(config).isEqualTo(options);
+                            return null;
+                        },
+                        options)
+                .await()
+                .join();
 
         assertThat(calls).hasValue(1);
     }
@@ -74,19 +78,25 @@ class PluginRegistryTest {
         assertThat(root.toString()).isEqualTo("Context <root>");
 
         root.plugin((ctx, config) -> {
-            assertThat(ctx.toString()).isEqualTo("Context <root>");
-            return null;
-        }).await().join();
+                    assertThat(ctx.toString()).isEqualTo("Context <root>");
+                    return null;
+                })
+                .await()
+                .join();
 
         root.plugin(Plugin.object("foo", Map.of(), (ctx, config) -> {
-            assertThat(ctx.toString()).isEqualTo("Context <foo>");
-            return null;
-        })).await().join();
+                    assertThat(ctx.toString()).isEqualTo("Context <foo>");
+                    return null;
+                }))
+                .await()
+                .join();
 
         root.plugin(Plugin.object("bar", Map.of(), (ctx, config) -> {
-            assertThat(ctx.toString()).isEqualTo("Context <bar>");
-            return null;
-        })).await().join();
+                    assertThat(ctx.toString()).isEqualTo("Context <bar>");
+                    return null;
+                }))
+                .await()
+                .join();
 
         root.plugin(Plugin.constructor(Qux.class)).await().join();
     }
@@ -98,6 +108,26 @@ class PluginRegistryTest {
             assertThat(ctx.toString()).isEqualTo("Context <Qux>");
             return null;
         }
+    }
+
+    @Test
+    void constructor_shouldBeCachedPerClass() {
+        assertThat(Plugin.constructor(Qux.class)).isSameAs(Plugin.constructor(Qux.class));
+    }
+
+    @Test
+    void constructor_sharedRuntimeAcrossEntries() {
+        Context root = Context.create();
+        // two entries of the same class plugin share one runtime (callback identity)
+        Fiber first = root.plugin(Plugin.constructor(Qux.class)).await().join();
+        Fiber second = root.plugin(Plugin.constructor(Qux.class)).await().join();
+        assertThat(first.runtime()).isSameAs(second.runtime());
+        assertThat(first.runtime().fibers()).contains(first, second);
+
+        first.disposeAsync().join();
+        assertThat(second.runtime().fibers()).doesNotContain(first).contains(second);
+        second.disposeAsync().join();
+        assertThat(root.registry().has(Plugin.constructor(Qux.class))).isFalse();
     }
 
     @Test
@@ -166,9 +196,11 @@ class PluginRegistryTest {
         Plugin plugin = (ctx, config) -> {
             ctx.on(EVENT, (a, b) -> null);
             ctx.plugin((c, cfg) -> {
-                c.on(EVENT, (a, b) -> null);
-                return null;
-            }).await().join();
+                        c.on(EVENT, (a, b) -> null);
+                        return null;
+                    })
+                    .await()
+                    .join();
             return null;
         };
 

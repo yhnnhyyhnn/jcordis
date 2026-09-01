@@ -40,6 +40,8 @@ public final class EntryGroup {
             entry.fiber.disposeAsync().join();
         }
         tree.store.remove(id);
+        // mirror Cordis: emit the partial-dispose event (legacy = current options)
+        ctx.events().emit((Object) null, "loader/partial-dispose", entry, entry.options, false);
     }
 
     /** Disposes the entry's fiber but keeps the entry (used by group stop). */
@@ -62,11 +64,13 @@ public final class EntryGroup {
         for (EntryOptions options : oldConfig) {
             oldMap.put(options.id, options);
         }
-        java.util.Map<String, EntryOptions> newMap = new java.util.HashMap<>();
+        java.util.Map<String, EntryOptions> newMap = new java.util.LinkedHashMap<>();
         for (EntryOptions options : config) {
             newMap.put(options.id != null ? options.id : "anonymous", options);
         }
-        java.util.Set<String> ids = new java.util.HashSet<>(oldMap.keySet());
+        // insertion-ordered union (old keys first, then new) — mirrors the
+        // reference's {@code {...oldMap, ...newMap}} key order
+        java.util.Set<String> ids = new java.util.LinkedHashSet<>(oldMap.keySet());
         ids.addAll(newMap.keySet());
         for (String id : ids) {
             if (newMap.containsKey(id)) {

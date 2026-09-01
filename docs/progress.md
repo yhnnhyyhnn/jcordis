@@ -699,3 +699,105 @@ Tests run: 146, Failures: 0 -- 总计（合并不丢测试）
 Reactor: jcordis 9/9 模块 SUCCESS, BUILD SUCCESS
 端到端回归：create 应用（新模板引用）构建 OK + demo-plugin 独立构建 OK
 ```
+
+---
+
+## 参考对齐修正（2026-08-27）
+
+对照 `cordis` 4.0.0-rc.9 逐文件复核，修复构建断裂与若干行为缺陷，补齐参考语义缺口。
+
+### 1. 构建修复：缺失 fixture 类
+
+| 项 | 内容 |
+|---|---|
+| 问题 | commit f4c0b4a 删除 fixture 后未重建，`PluginJarTest`/`JarWatcherTest` 引用的 `io.jcordis.fixture.SamplePlugin/V1Plugin/V2Plugin` 不存在 → 6 个测试 Error |
+| 修复 | 在 `jcordis-loader/src/test/fixtures/java/io/jcordis/fixture/` 重建三类（探针 `jcordis.probe.sample` / `jcordis.probe.version`），与 `IsolatedPlugin` 同约定（仅存在于 fixture jar，脱离宿主 classpath） |
+
+### 2. 行为缺陷修复（A 组）
+
+| 缺陷 | 修复 |
+|---|---|
+| **config 变更不重启插件**：`Entry.update` 在 `copyInto` 之后比较 `options.config` 与 `source.config`（同一引用，恒等）→ `loader.read()`/Hmr 路径改配置永不触发 `fiber.update` | 覆盖前捕获 `legacyConfig` 再比较；新增 `EntryConfigChangeTest`（2） |
+| `Logger` `%C` 格式化吞值（返回空串） | formatter 改为接收 `(value, exporter, message)`，`%C` 用消息名色板给值上色；`LoggerConsoleTest` +2 |
+| `ReflectService.set(String)` 无跨 fiber 校验 | 补 `impl.fiber() != source.fiber()` 抛错（对齐参考 "in multiple fibers"）；`ServiceRegistryTest` +1 |
+| `FiberImpl.checkImpl` 不调用 `Impl.check()` 谓词 | 补 check 调用（false/异常 → 从 store 删除）；`ReflectService.provide` 增 4 参重载（带 check）；`ServiceRegistryTest` +1 |
+| 异步插件体失败：卡 LOADING、无日志、无 FAILED 回退 | `reload()` 异步分支经 `handle` 捕获 → `handleBodyFailure`（记 error + 日志 + epoch=INACTIVE + 卸载部分效应 + FAILED）；`inertia` 落定置空 |
+| FAILED 状态无 `_error` 恢复语义 | 新增 `error` 字段：`setEpoch` 在 error 存在时拒绝转换；`await()` 抛错；仅 `update()` 清除 error 后 `restart()` 恢复（对齐参考）；新增 `FiberFailureTest`（6） |
+| **intercept/isolate 更新不传播到运行中 fiber**（`ContextImpl.child` 拷贝 map，fiber.ctx 与 entry.ctx 无活链接） | `Entry.rebuildCtx()` 从 parent 重建（消除链增长）+ `Fiber.rebindContext()` 重启前重绑定；`LoaderIsolateConfigTest` +1 |
+| `TimerService.close()` 无人调用且 `close()` 会创建空线程池 | 构造时经 `ctx.effect` 注册关闭；`scheduler()` 支持关闭后重建；`close()` 幂等 |
+| `EntryGroup.update` 用 `HashSet` 迭代 id（顺序不定，破坏依赖顺序） | 改 `LinkedHashMap` + `LinkedHashSet`（插入序，对齐参考对象键序） |
+| **entry 级 `options.inject` 从未合并到 fiber**（参考经 internal/plugin 事件在依赖解析前合并） | `RegistryService.plugin` 增 extraInject 重载，Entry.init 合并后传入；这是 loader await 语义的前置 |
+
+### 3. 参考语义补齐（B 组）
+
+| 项 | 内容 |
+|---|---|
+| `Fiber.getEffects()` | `EffectMeta(label, children)` + 嵌套 effect 归属移交（外层收集即从 fiber 列表移除）；`FiberEffectTest` +1 |
+| `Plugin.constructor(Class)` 缓存 | 按 Class 缓存构造插件实例 → 同 class 多条目共享 runtime（对齐参考按 callback 身份）；`PluginRegistryTest` +2 |
+| loader `await` 配置 | `Loader` 提供带 check 谓词：`checkLoader()` 沿 intercept 链取 `loader.await`，有未落定任务时服务不可用；`EntryTree.getTasks()/await()` 实现；`Entry.init` 尾补 `notify(['loader'])`（任务落定后重查依赖方）；`LoaderBasicTest` +1 |
+| `Include` 监听 `internal/update` path 变更 | 配置 path 匹配时重应用解析树（对齐参考） |
+| `Service.resolveConfig` | 沿 parent 链合并 intercept 配置（base + 链 + head，后赢），对齐参考 API；`ServiceRegistryTest` +1 |
+
+### 4. 卫生项
+
+- `PluginJarTest` 宿主 SPI 模拟引用已删除的 `io.jcordis.loader.fixture.SamplePlugin` → 改为存在的 fixture 类名并澄清注释
+- README 过时内容（14/14 模块、146 测试 → 9/9 模块、165 测试；模块合并描述）
+- `spotless:apply` 全量格式化（原仓库 11 处格式债务一并修复）
+
+### 验证结果
+
+```
+Tests run: 165, Failures: 0 -- 总计（新增 18 个测试）
+Reactor: jcordis 9/9 模块 SUCCESS, BUILD SUCCESS
+mvn -Pformat spotless:check -- BUILD SUCCESS（全量合规）
+```
+
+---
+
+## 参考对齐修正 · 续（2026-08-27）
+
+继续补齐上一轮未动的 B 组语义缺口（内部事件可观测性 / 瀑布链 / group 身份 / Loader 方法）。
+
+### 1. `internal/status` 事件发射（B2）
+
+| 项 | 内容 |
+|---|---|
+| 改动 | `FiberImpl` 新增 `transitionState()` 辅助：所有生命周期状态转换（LOADING/ACTIVE/FAILED/PENDING/DISPOSED/UNLOADING）经它赋值并发射 `internal/status(fiber, oldState)`（对齐参考 `_updateState`）；构造期与 root 保持直接赋值（events 尚未就绪/无观察者） |
+| 测试 | `FiberEffectTest.internalStatus_shouldReportStateTransitions`（PENDING→LOADING→ACTIVE→DISPOSED 序列） |
+
+### 2. `internal/get` / `internal/set` 瀑布链（B2）
+
+| 项 | 内容 |
+|---|---|
+| 改动 | `ContextImpl.get(String)` / `set(String, T)` 的服务访问路径经 `events().waterfall("internal/get|set", [ctx, name(, value)], inner)` 派发——监听器可拦截/替换/拒绝；默认 tail 行为与之前完全一致（props 短路、inactive 检查、reflect store 读写） |
+| 测试 | `FiberEffectTest.internalGet_shouldAllowInterception` / `internalSet_shouldAllowRejection`（替换值 / 拒绝写） |
+
+### 3. `loader/partial-dispose` 事件（B6）
+
+| 项 | 内容 |
+|---|---|
+| 改动 | `Entry.update` 重启路径与 `EntryGroup.remove` 均发射 `loader/partial-dispose(entry, legacy, active)`（legacy 用 `EntryOptions.Snapshot`）；为后续 realm 回收等消费者预留 |
+| 测试 | `LoaderBasicTest.partialDispose_shouldEmitWithLegacyOptions` |
+
+### 4. Group 插件身份判定（替换名字匹配 hack）
+
+| 项 | 内容 |
+|---|---|
+| 改动 | 删除 `isGroupPlugin(name)`（`name.contains("plugin-group")` 脆弱判定）；改为 `plugin == Loader.GROUP_PLUGIN` 身份检查（对齐参考 `plugin[EntryGroup.key]` 标记）；`Loader` 构造时把 `@cordisjs/plugin-group` 注册进 `builtins`（参考同名的导出） |
+| 测试 | `LoaderBasicTest.groupPluginIdentity_shouldMarkEntryAsGroup`（无 `group: true` 也能作为容器） |
+
+### 5. Loader 方法补齐
+
+| 项 | 内容 |
+|---|---|
+| `Loader.locate(fiber)` | 沿 ctx parent 链找 fiber 所属 entry id（对齐参考 `Loader.locate`） |
+| `Loader.showLog` | 改用已修复的 `%C` 格式化（`"%s plugin %C"`，对齐参考输出） |
+| 测试 | `LoaderBasicTest.locate_shouldFindEntryIdOfFiber` |
+
+### 验证结果
+
+```
+Tests run: 171, Failures: 0 -- 总计（新增 6 个测试）
+Reactor: jcordis 9/9 模块 SUCCESS, BUILD SUCCESS
+mvn -Pformat spotless:check -- BUILD SUCCESS
+```

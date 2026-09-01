@@ -3,7 +3,6 @@ package io.jcordis.maven;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.lang.reflect.Field;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import org.apache.maven.plugin.logging.SystemStreamLog;
 import org.junit.jupiter.api.Test;
@@ -26,7 +25,8 @@ class CreatePluginMojoTest {
         Path dir = tempDir.resolve("demo-plugin");
         assertThat(dir.resolve("pom.xml")).exists();
         assertThat(dir.resolve("src/main/java/demo/plugin/SamplePlugin.java")).exists();
-        assertThat(dir.resolve("src/main/resources/META-INF/services/io.jcordis.core.registry.Plugin")).exists();
+        assertThat(dir.resolve("src/main/resources/META-INF/services/io.jcordis.core.registry.Plugin"))
+                .exists();
     }
 
     private static void inject(Object target, String fieldName, Object value) throws Exception {

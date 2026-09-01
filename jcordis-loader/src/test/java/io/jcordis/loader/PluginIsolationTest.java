@@ -36,7 +36,8 @@ class PluginIsolationTest {
 
             String loaderName = System.getProperty(PROBE);
             assertThat(loaderName).isNotNull().isEqualTo(PluginClassLoader.class.getName());
-            assertThat(loaderName).isNotEqualTo(getClass().getClassLoader().getClass().getName());
+            assertThat(loaderName)
+                    .isNotEqualTo(getClass().getClassLoader().getClass().getName());
         } finally {
             System.clearProperty(PROBE);
             loader.unload("iso");

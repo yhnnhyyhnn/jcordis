@@ -12,7 +12,9 @@ public class AggregateError extends RuntimeException {
 
     public AggregateError(List<Throwable> errors) {
         super(errors.stream()
-                .map(error -> error.getMessage() != null ? error.getMessage() : error.getClass().getName())
+                .map(error -> error.getMessage() != null
+                        ? error.getMessage()
+                        : error.getClass().getName())
                 .reduce((a, b) -> a + ", " + b)
                 .orElse("aggregate error"));
         this.errors = List.copyOf(errors);

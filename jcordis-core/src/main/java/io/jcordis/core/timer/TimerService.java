@@ -28,15 +28,18 @@ public class TimerService extends Service {
 
     public TimerService(Context ctx) {
         super(ctx, "timer");
+        // close the scheduler when the owning fiber is torn down (root teardown
+        // in the common case; a plugin-scoped timer shuts down with its plugin)
+        ctx.effect(runner -> io.jcordis.core.fiber.EffectResult.of(this::close), "ctx.timer.close()");
     }
 
     private ScheduledExecutorService scheduler() {
         ScheduledExecutorService existing = scheduler;
-        if (existing != null) {
+        if (existing != null && !existing.isShutdown()) {
             return existing;
         }
         synchronized (this) {
-            if (scheduler == null) {
+            if (scheduler == null || scheduler.isShutdown()) {
                 scheduler = Executors.newSingleThreadScheduledExecutor(runnable -> {
                     Thread thread = new Thread(runnable, "jcordis-timer");
                     thread.setDaemon(true);
@@ -69,44 +72,54 @@ public class TimerService extends Service {
 
     /** Schedules a one-shot callback, returning a disposable that cancels it. */
     public Disposable timeout(Runnable callback, long delay) {
-        return ctx.effect(runner -> {
-            ScheduledFuture<?>[] holder = new ScheduledFuture[1];
-            AtomicLong[] state = new AtomicLong[1];
-            state[0] = new AtomicLong();
-            holder[0] = scheduler().schedule(() -> {
-                state[0].set(1);
-                callback.run();
-            }, delay, TimeUnit.MILLISECONDS);
-            return EffectResult.of(() -> {
-                if (state[0].get() == 0) {
-                    holder[0].cancel(true);
-                }
-            });
-        }, "ctx.timeout()");
+        return ctx.effect(
+                runner -> {
+                    ScheduledFuture<?>[] holder = new ScheduledFuture[1];
+                    AtomicLong[] state = new AtomicLong[1];
+                    state[0] = new AtomicLong();
+                    holder[0] = scheduler()
+                            .schedule(
+                                    () -> {
+                                        state[0].set(1);
+                                        callback.run();
+                                    },
+                                    delay,
+                                    TimeUnit.MILLISECONDS);
+                    return EffectResult.of(() -> {
+                        if (state[0].get() == 0) {
+                            holder[0].cancel(true);
+                        }
+                    });
+                },
+                "ctx.timeout()");
     }
 
     /** Returns a future completing after the delay (cancelled on dispose). */
     public CompletableFuture<Void> timeout(long delay) {
         CompletableFuture<Void> future = new CompletableFuture<>();
-        Disposable dispose = ctx.effect(runner -> {
-            ScheduledFuture<?> task = scheduler().schedule(
-                    () -> future.complete(null), delay, TimeUnit.MILLISECONDS);
-            return EffectResult.of(() -> {
-                task.cancel(true);
-                future.completeExceptionally(new IllegalStateException("Context has been disposed"));
-            });
-        }, "ctx.timeout()");
+        Disposable dispose = ctx.effect(
+                runner -> {
+                    ScheduledFuture<?> task =
+                            scheduler().schedule(() -> future.complete(null), delay, TimeUnit.MILLISECONDS);
+                    return EffectResult.of(() -> {
+                        task.cancel(true);
+                        future.completeExceptionally(new IllegalStateException("Context has been disposed"));
+                    });
+                },
+                "ctx.timeout()");
         future.whenComplete((value, error) -> dispose.dispose());
         return future;
     }
 
     /** Schedules a repeating callback, returning a disposable that stops it. */
     public Disposable interval(Runnable callback, long delay) {
-        return ctx.effect(runner -> {
-            ScheduledFuture<?> task =
-                    scheduler().scheduleAtFixedRate(callback, delay, delay, TimeUnit.MILLISECONDS);
-            return EffectResult.of(() -> task.cancel(true));
-        }, "ctx.interval()");
+        return ctx.effect(
+                runner -> {
+                    ScheduledFuture<?> task =
+                            scheduler().scheduleAtFixedRate(callback, delay, delay, TimeUnit.MILLISECONDS);
+                    return EffectResult.of(() -> task.cancel(true));
+                },
+                "ctx.interval()");
     }
 
     /** Returns a throttled wrapper: at most one call per {@code delay} window. */
@@ -125,17 +138,25 @@ public class TimerService extends Service {
                 if (pending[0] != null) {
                     pending[0].cancel(true);
                 }
-                pending[0] = scheduler().schedule(() -> {
-                    lastCall.set(System.currentTimeMillis());
-                    callback.run();
-                }, remaining, TimeUnit.MILLISECONDS);
+                pending[0] = scheduler()
+                        .schedule(
+                                () -> {
+                                    lastCall.set(System.currentTimeMillis());
+                                    callback.run();
+                                },
+                                remaining,
+                                TimeUnit.MILLISECONDS);
             }
         };
-        return new Timer(wrapper, ctx.effect(runner -> EffectResult.of(() -> {
-            if (pending[0] != null) {
-                pending[0].cancel(true);
-            }
-        }), "ctx.throttle()"));
+        return new Timer(
+                wrapper,
+                ctx.effect(
+                        runner -> EffectResult.of(() -> {
+                            if (pending[0] != null) {
+                                pending[0].cancel(true);
+                            }
+                        }),
+                        "ctx.throttle()"));
     }
 
     /** Returns a debounced wrapper: callbacks fire after {@code delay} of silence. */
@@ -147,15 +168,22 @@ public class TimerService extends Service {
             }
             pending[0] = scheduler().schedule(callback, delay, TimeUnit.MILLISECONDS);
         };
-        return new Timer(wrapper, ctx.effect(runner -> EffectResult.of(() -> {
-            if (pending[0] != null) {
-                pending[0].cancel(true);
-            }
-        }), "ctx.debounce()"));
+        return new Timer(
+                wrapper,
+                ctx.effect(
+                        runner -> EffectResult.of(() -> {
+                            if (pending[0] != null) {
+                                pending[0].cancel(true);
+                            }
+                        }),
+                        "ctx.debounce()"));
     }
 
-    /** Shuts down the scheduler (called on root teardown). */
+    /** Shuts down the scheduler (called on fiber teardown). Idempotent. */
     public void close() {
-        scheduler().shutdownNow();
+        ScheduledExecutorService existing = scheduler;
+        if (existing != null) {
+            existing.shutdownNow();
+        }
     }
 }

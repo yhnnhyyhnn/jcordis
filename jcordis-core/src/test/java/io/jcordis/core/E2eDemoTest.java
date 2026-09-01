@@ -39,10 +39,12 @@ class E2eDemoTest {
         }
 
         Disposable connect(Context caller, String name) {
-            return caller.effect(r -> {
-                connections.add(name);
-                return io.jcordis.core.fiber.EffectResult.of(() -> connections.remove(name));
-            }, "connect(" + name + ")");
+            return caller.effect(
+                    r -> {
+                        connections.add(name);
+                        return io.jcordis.core.fiber.EffectResult.of(() -> connections.remove(name));
+                    },
+                    "connect(" + name + ")");
         }
     }
 
@@ -116,18 +118,17 @@ class E2eDemoTest {
     void loggerIntegratedWithPluginLifecycle() {
         Context root = Context.create();
         List<String> captured = new ArrayList<>();
-        root.loggerService()
-                .exporter(new io.jcordis.core.logger.Exporter() {
-                    @Override
-                    public void export(io.jcordis.core.logger.Message message) {
-                        captured.add(message.name() + ":" + message.args()[0]);
-                    }
+        root.loggerService().exporter(new io.jcordis.core.logger.Exporter() {
+            @Override
+            public void export(io.jcordis.core.logger.Message message) {
+                captured.add(message.name() + ":" + message.args()[0]);
+            }
 
-                    @Override
-                    public java.util.Map<String, Integer> levels() {
-                        return java.util.Map.of("default", 3);
-                    }
-                });
+            @Override
+            public java.util.Map<String, Integer> levels() {
+                return java.util.Map.of("default", 3);
+            }
+        });
 
         Plugin app = Plugin.object("my-app", java.util.Map.of(), (ctx, config) -> {
             Logger logger = ctx.logger();

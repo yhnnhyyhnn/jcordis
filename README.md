@@ -74,7 +74,7 @@ mvn io.jcordis:jcordis-maven-plugin:0.1.0-SNAPSHOT:create-plugin -Dname=demo-plu
 
 ## Business System Integration
 
-One coordinate brings in all jcordis modules (core/loader/utils/timer/logger-console/include/group/cli):
+One coordinate brings in the whole runtime framework (core + loader, including the timer / console-exporter / include / group / utils functionality merged into them):
 
 ```xml
 <dependency>
@@ -107,5 +107,5 @@ Plugin projects produce a **clean jar**: only plugin classes + a `META-INF/servi
 ## Build & Test
 
 ```bash
-mvn clean verify   # 14/14 modules, 146 tests green
+mvn clean verify   # 9/9 modules, 171 tests green
 ```

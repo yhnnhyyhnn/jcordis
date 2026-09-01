@@ -2,7 +2,6 @@ package io.jcordis.core.fiber;
 
 import io.jcordis.core.context.Context;
 import io.jcordis.core.event.EventHandler;
-import io.jcordis.core.reflect.Impl;
 import io.jcordis.core.registry.PluginRuntime;
 import io.jcordis.core.util.Disposable;
 import java.util.List;
@@ -43,6 +42,16 @@ public interface Fiber {
 
     /** Associates this fiber with a loader entry. */
     default void setEntry(Object entry) {}
+
+    /**
+     * Replaces this fiber's context. The loader uses this to propagate entry
+     * intercept/isolate updates onto the running fiber before a restart
+     * (mirrors Cordis's {@code Object.setPrototypeOf} context patching).
+     */
+    default void rebindContext(Context ctx) {}
+
+    /** Pending load/unload work, or {@code null} when idle. */
+    CompletableFuture<Void> inertia();
 
     /** Resolved inject declarations ({@code name -> config}). */
     Map<String, Object> inject();
@@ -99,6 +108,12 @@ public interface Fiber {
 
     /** Number of registered effect disposables. */
     int effectCount();
+
+    /**
+     * Effect metadata (label + nesting) in registration order, mirroring
+     * Cordis's {@code fiber.getEffects()}.
+     */
+    List<EffectMeta> getEffects();
 
     /** Tears down the fiber, disposing all effects in reverse order. */
     CompletableFuture<Void> disposeAsync();

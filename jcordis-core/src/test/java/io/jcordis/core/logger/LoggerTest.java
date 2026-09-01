@@ -9,7 +9,6 @@ import io.jcordis.core.util.Disposable;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
 
 /** Translates Cordis logger.spec.ts: bounded buffer, exporters, name derivation. */
@@ -29,18 +28,17 @@ class LoggerTest {
     /** Captures messages via a custom exporter at DEBUG level. */
     private static List<Message> setup(Context ctx) {
         List<Message> captured = new ArrayList<>();
-        ctx.loggerService()
-                .exporter(new Exporter() {
-                    @Override
-                    public void export(Message message) {
-                        captured.add(message);
-                    }
+        ctx.loggerService().exporter(new Exporter() {
+            @Override
+            public void export(Message message) {
+                captured.add(message);
+            }
 
-                    @Override
-                    public Map<String, Integer> levels() {
-                        return Map.of("default", 3);
-                    }
-                });
+            @Override
+            public Map<String, Integer> levels() {
+                return Map.of("default", 3);
+            }
+        });
         return captured;
     }
 
@@ -70,20 +68,18 @@ class LoggerTest {
         ctx.loggerService().exporters().clear();
         List<Message> first = new ArrayList<>();
         List<Message> second = new ArrayList<>();
-        Disposable disposeFirst = ctx.loggerService()
-                .exporter(new Exporter() {
-                    @Override
-                    public void export(Message message) {
-                        first.add(message);
-                    }
-                });
-        Disposable disposeSecond = ctx.loggerService()
-                .exporter(new Exporter() {
-                    @Override
-                    public void export(Message message) {
-                        second.add(message);
-                    }
-                });
+        Disposable disposeFirst = ctx.loggerService().exporter(new Exporter() {
+            @Override
+            public void export(Message message) {
+                first.add(message);
+            }
+        });
+        Disposable disposeSecond = ctx.loggerService().exporter(new Exporter() {
+            @Override
+            public void export(Message message) {
+                second.add(message);
+            }
+        });
 
         disposeFirst.dispose();
         ctx.logger().info("test");
@@ -184,9 +180,11 @@ class LoggerTest {
         ctx.plugin(foo).await().join();
 
         ctx.inject(List.of("foo"), (injectCtx, config) -> {
-            ((FooWithBar) injectCtx.get("foo")).action();
-            return null;
-        }).await().join();
+                    ((FooWithBar) injectCtx.get("foo")).action();
+                    return null;
+                })
+                .await()
+                .join();
 
         assertThat(captured.stream().map(m -> m.name() + ":" + m.args()[0]).toList())
                 .containsExactly("bar:driver:from bar", "foo:driver:from foo");

@@ -90,4 +90,31 @@ class LoaderIsolateConfigTest {
         // distinct global realms stay isolated
         assertThat(bSees.get()).isNull();
     }
+
+    @Test
+    void interceptUpdate_shouldPropagateToRunningFiber() {
+        Context root = Context.create();
+        Loader loader = new Loader(root);
+        AtomicReference<Object> seen = new AtomicReference<>("sentinel");
+        loader.mock("svc", (ctx, config) -> {
+            seen.set(ctx.interceptConfig("svc"));
+            return null;
+        });
+
+        EntryOptions options = entry("a");
+        options.id = "a";
+        options.name = "svc";
+        loader.create(options, null);
+        assertThat(seen.get()).isNull();
+
+        // config update that changes the intercept option must reach the fiber
+        // body on restart (mirrors Cordis's Object.setPrototypeOf patch)
+        EntryOptions updated = entry("a");
+        updated.id = "a";
+        updated.name = "svc";
+        updated.intercept = Map.of("svc", Map.of("base", "url"));
+        loader.update("a", updated, null);
+
+        assertThat(seen.get()).isEqualTo(Map.of("base", "url"));
+    }
 }

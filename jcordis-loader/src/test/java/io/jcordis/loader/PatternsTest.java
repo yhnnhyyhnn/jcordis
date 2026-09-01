@@ -44,11 +44,13 @@ class PatternsTest {
         Loader loader = new Loader(root);
         loader.mock("feature", (ctx, config) -> null);
 
-        EntryOptions options = new EntryOptions.Builder().id("cmd").name("feature").build();
+        EntryOptions options =
+                new EntryOptions.Builder().id("cmd").name("feature").build();
         loader.execute(Command.TreeCommand.create(options, null));
         assertThat(loader.resolve("cmd")).isNotNull();
 
-        loader.execute(Command.TreeCommand.update("cmd", new EntryOptions.Builder().disabled(true).build(), null));
+        loader.execute(Command.TreeCommand.update(
+                "cmd", new EntryOptions.Builder().disabled(true).build(), null));
         assertThat(loader.resolve("cmd").options.disabled).isTrue();
 
         loader.execute(Command.TreeCommand.remove("cmd"));

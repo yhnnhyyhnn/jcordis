@@ -44,40 +44,58 @@ public class Loader extends EntryTree {
         super(ctx, null);
         this.ctx = ctx;
         bindLoader(this);
-        ctx.provide("loader", this);
+        // the group plugin is built-in and resolvable by name (mirrors Cordis's
+        // `@cordisjs/plugin-group` export)
+        builtins.put("@cordisjs/plugin-group", GROUP_PLUGIN);
+        // mirror Cordis: the loader service carries a check predicate gating
+        // dependency readiness when the `await` intercept config is active
+        ctx.reflect().provide("loader", this, ctx, ignored -> checkLoader());
 
-        ctx.on("internal/update", (thisArg, args) -> {
-            Object config = args[0];
-            Boolean noSave = (Boolean) args[1];
-            if (thisArg instanceof Fiber fiber && fiber.entry() instanceof Entry entry && !Boolean.TRUE.equals(noSave)) {
-                entry.options.config = config;
-                entry.parent.tree.write();
-            }
-            if (args.length > 2 && args[2] instanceof java.util.function.Supplier<?> next) {
-                return next.get();
-            }
-            return null;
-        }, EventOptions.of(true, true));
-
-        ctx.on("internal/plugin", (thisArg, args) -> {
-            Object fiberArg = args.length > 0 ? args[0] : null;
-            if (fiberArg instanceof Fiber fiber && fiber.uid() < 0 && fiber.entry() instanceof Entry entry) {
-                boolean cascaded = false;
-                Entry cursor = entry.parent != null ? entry.parent.ctx.fiber().entry() instanceof Entry p ? p : null : null;
-                while (cursor != null) {
-                    if (Boolean.TRUE.equals(cursor.options.disabled)) {
-                        cascaded = true;
-                        break;
+        ctx.on(
+                "internal/update",
+                (thisArg, args) -> {
+                    Object config = args[0];
+                    Boolean noSave = (Boolean) args[1];
+                    if (thisArg instanceof Fiber fiber
+                            && fiber.entry() instanceof Entry entry
+                            && !Boolean.TRUE.equals(noSave)) {
+                        entry.options.config = config;
+                        entry.parent.tree.write();
                     }
-                    cursor = cursor.parent != null && cursor.parent.ctx.fiber().entry() instanceof Entry p ? p : null;
-                }
-                if (!cascaded) {
-                    entry.options.disabled = true;
-                    entry.parent.tree.write();
-                }
-            }
-            return null;
-        }, EventOptions.of(false, false));
+                    if (args.length > 2 && args[2] instanceof java.util.function.Supplier<?> next) {
+                        return next.get();
+                    }
+                    return null;
+                },
+                EventOptions.of(true, true));
+
+        ctx.on(
+                "internal/plugin",
+                (thisArg, args) -> {
+                    Object fiberArg = args.length > 0 ? args[0] : null;
+                    if (fiberArg instanceof Fiber fiber && fiber.uid() < 0 && fiber.entry() instanceof Entry entry) {
+                        boolean cascaded = false;
+                        Entry cursor = entry.parent != null
+                                ? entry.parent.ctx.fiber().entry() instanceof Entry p ? p : null
+                                : null;
+                        while (cursor != null) {
+                            if (Boolean.TRUE.equals(cursor.options.disabled)) {
+                                cascaded = true;
+                                break;
+                            }
+                            cursor = cursor.parent != null
+                                            && cursor.parent.ctx.fiber().entry() instanceof Entry p
+                                    ? p
+                                    : null;
+                        }
+                        if (!cascaded) {
+                            entry.options.disabled = true;
+                            entry.parent.tree.write();
+                        }
+                    }
+                    return null;
+                },
+                EventOptions.of(false, false));
     }
 
     @Override
@@ -200,8 +218,8 @@ public class Loader extends EntryTree {
             if (entry == null) {
                 throw new IllegalArgumentException("no Plugin implementation in " + jar);
             }
-            try (BufferedReader reader = new BufferedReader(
-                    new InputStreamReader(jarFile.getInputStream(entry), StandardCharsets.UTF_8))) {
+            try (BufferedReader reader =
+                    new BufferedReader(new InputStreamReader(jarFile.getInputStream(entry), StandardCharsets.UTF_8))) {
                 String line;
                 while ((line = reader.readLine()) != null) {
                     line = line.trim();
@@ -241,6 +259,28 @@ public class Loader extends EntryTree {
         return entry != null ? entry.fiber : null;
     }
 
+    /**
+     * Returns the id of the entry containing the given fiber (walking up the
+     * context chain), mirroring Cordis's {@code Loader.locate}.
+     */
+    public String locate(io.jcordis.core.fiber.Fiber fiber) {
+        if (fiber == null) {
+            fiber = ctx.fiber();
+        }
+        io.jcordis.core.fiber.Fiber cursor = fiber;
+        while (cursor != null) {
+            if (cursor.entry() instanceof Entry entry) {
+                return entry.id();
+            }
+            io.jcordis.core.context.Context parentCtx = cursor.ctx().parent();
+            if (parentCtx == null) return null;
+            io.jcordis.core.fiber.Fiber next = parentCtx.fiber();
+            if (next == cursor) return null;
+            cursor = next;
+        }
+        return null;
+    }
+
     /** Applies a full config list, creating/updating/removing entries. */
     public void read(java.util.List<EntryOptions> config) {
         root.update(config);
@@ -249,6 +289,25 @@ public class Loader extends EntryTree {
     @Override
     public void write() {
         // in-memory loader: no-op
+    }
+
+    /**
+     * Loader availability check (mirrors Cordis's {@code Loader[Service.check]}):
+     * when the {@code loader.await} intercept config is set, the loader is only
+     * "ready" once every entry task has settled.
+     */
+    private boolean checkLoader() {
+        Object config = null;
+        Context cursor = ctx;
+        while (cursor != null) {
+            Object value = cursor.interceptConfig("loader");
+            if (value != null) {
+                config = value;
+            }
+            cursor = cursor.parent();
+        }
+        boolean await = config instanceof Map<?, ?> map && Boolean.TRUE.equals(map.get("await"));
+        return !await || getTasks().isEmpty();
     }
 
     public Context ctx() {
@@ -274,6 +333,7 @@ public class Loader extends EntryTree {
 
     public void showLog(Entry entry, String type) {
         if (entry.options.group != null && Boolean.TRUE.equals(entry.options.group) || !enableLogs) return;
-        ctx.logger("loader").info(type + " plugin " + entry.options.name);
+        // %C colors the plugin name with the logger's palette code (mirrors Cordis)
+        ctx.logger("loader").info("%s plugin %C", type, entry.options.name);
     }
 }

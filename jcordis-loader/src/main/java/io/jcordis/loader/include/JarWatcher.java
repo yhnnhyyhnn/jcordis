@@ -51,10 +51,13 @@ public final class JarWatcher implements Runnable {
         try {
             Files.createDirectories(dir);
             watchService = java.nio.file.FileSystems.getDefault().newWatchService();
-            dir.register(watchService, StandardWatchEventKinds.ENTRY_CREATE, StandardWatchEventKinds.ENTRY_MODIFY, StandardWatchEventKinds.ENTRY_DELETE);
+            dir.register(
+                    watchService,
+                    StandardWatchEventKinds.ENTRY_CREATE,
+                    StandardWatchEventKinds.ENTRY_MODIFY,
+                    StandardWatchEventKinds.ENTRY_DELETE);
             try (Stream<Path> jars = Files.list(dir)) {
-                jars.filter(p -> p.getFileName().toString().endsWith(".jar"))
-                        .forEach(this::loadInitial);
+                jars.filter(p -> p.getFileName().toString().endsWith(".jar")).forEach(this::loadInitial);
             }
         } catch (IOException e) {
             running.set(false);
@@ -134,9 +137,7 @@ public final class JarWatcher implements Runnable {
             fingerprints.put(name, hash);
             loader.ctx().events().emit((Object) null, "hmr/reload", name);
         } catch (RuntimeException | Error e) {
-            loader.ctx()
-                    .logger("loader")
-                    .error("plugin hot-reload failed for " + name + ": " + e.getMessage());
+            loader.ctx().logger("loader").error("plugin hot-reload failed for " + name + ": " + e.getMessage());
             scheduleRetry(file);
         }
     }
@@ -146,14 +147,16 @@ public final class JarWatcher implements Runnable {
      * window where a watch event fires before the file was fully written.
      */
     private void scheduleRetry(String file) {
-        Thread retry = new Thread(() -> {
-            try {
-                Thread.sleep(200);
-            } catch (InterruptedException e) {
-                return;
-            }
-            handle(Path.of(file), StandardWatchEventKinds.ENTRY_MODIFY);
-        }, "jcordis-jar-retry");
+        Thread retry = new Thread(
+                () -> {
+                    try {
+                        Thread.sleep(200);
+                    } catch (InterruptedException e) {
+                        return;
+                    }
+                    handle(Path.of(file), StandardWatchEventKinds.ENTRY_MODIFY);
+                },
+                "jcordis-jar-retry");
         retry.setDaemon(true);
         retry.start();
     }
