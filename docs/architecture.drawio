@@ -23,7 +23,7 @@
         <mxCell id="7" value="业务系统&#xa;Host Application" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;" vertex="1" parent="6">
           <mxGeometry x="40" y="50" width="280" height="80" as="geometry" />
         </mxCell>
-        <mxCell id="8" value="examples 示例应用&#xa;hello-world / service-graph / config-app" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#666666;" vertex="1" parent="6">
+        <mxCell id="8" value="examples 示例应用examples 示例应用&#xa;hello-world / service-graph / config-app#xa;hello-world / service-graph / config-app / hmr-app（热重载演示）" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#666666;" vertex="1" parent="6">
           <mxGeometry x="360" y="50" width="280" height="80" as="geometry" />
         </mxCell>
         <mxCell id="9" value="插件 jar（构件）&#xa;干净 jar + SPI 服务清单" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;" vertex="1" parent="6">

@@ -24,20 +24,26 @@ public final class LoggerService {
     private final Map<Integer, Exporter> exporters = new ConcurrentHashMap<>();
 
     private volatile int bufferSize = 1000;
-    private volatile int snMessage;
-    private volatile int snExporter;
+    private final java.util.concurrent.atomic.AtomicInteger snMessage = new java.util.concurrent.atomic.AtomicInteger();
+    private final java.util.concurrent.atomic.AtomicInteger snExporter =
+            new java.util.concurrent.atomic.AtomicInteger();
+
+    /** Monitor lock serializing buffer mutations across logger threads. */
+    private final Object bufferLock = new Object();
 
     public LoggerService(Context ctx) {
         this.ctx = ctx;
         exporter(new Exporter() {
             @Override
             public void export(Message message) {
-                buffer.add(message);
-                int overflow = buffer.size() - bufferSize;
-                if (overflow == 1) {
-                    buffer.remove(0);
-                } else if (overflow > 1) {
-                    buffer.subList(0, overflow).clear();
+                synchronized (bufferLock) {
+                    buffer.add(message);
+                    int overflow = buffer.size() - bufferSize;
+                    if (overflow == 1) {
+                        buffer.remove(0);
+                    } else if (overflow > 1) {
+                        buffer.subList(0, overflow).clear();
+                    }
                 }
             }
         });
@@ -64,7 +70,7 @@ public final class LoggerService {
         return ctx.fiber()
                 .effect(
                         runner -> {
-                            int id = ++snExporter;
+                            int id = snExporter.incrementAndGet();
                             exporters.put(id, exporter);
                             return EffectResult.of(() -> exporters.remove(id));
                         },
@@ -101,7 +107,7 @@ public final class LoggerService {
             }
             return;
         }
-        int sn = ++snMessage;
+        int sn = snMessage.incrementAndGet();
         long ts = System.currentTimeMillis();
         for (Exporter exporter : exporters.values()) {
             Integer threshold = exporter.levels().get(name);

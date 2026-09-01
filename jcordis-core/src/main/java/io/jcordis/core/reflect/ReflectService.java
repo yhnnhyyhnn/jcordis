@@ -92,13 +92,15 @@ public final class ReflectService {
                 .effect(
                         runner -> {
                             ServiceKey<?> key = implKey(name, source);
-                            if (store.containsKey(key)) {
-                                throw new IllegalStateException("service \"" + name + "\" has been registered at <"
-                                        + source.fiber().name() + ">");
-                            }
                             props.put(name, "service");
                             Impl impl = new Impl(name, value, source.fiber(), check);
-                            store.put(key, impl);
+                            // atomic compare-and-set: concurrent provides of the
+                            // same name are serialized — exactly one wins
+                            Impl existing = store.putIfAbsent(key, impl);
+                            if (existing != null) {
+                                throw new IllegalStateException("service \"" + name + "\" has been registered at <"
+                                        + existing.fiber().name() + ">");
+                            }
                             if (source.fiber().state() == FiberState.ACTIVE) {
                                 notify(List.of(name), source);
                             }

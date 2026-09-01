@@ -209,6 +209,14 @@ public final class FiberImpl implements Fiber {
         return await();
     }
 
+    /**
+     * Per-thread stack of in-flight effect registration collectors. Nested
+     * effects registered by a throwing runner are tracked by object (not by
+     * list index), so concurrent effect() calls from other threads can never
+     * be mis-disposed by a failed runner's rollback.
+     */
+    private static final ThreadLocal<List<Disposable>> IN_FLIGHT = new ThreadLocal<>();
+
     /** Adds a disposable under the lifecycle lock. */
     private void addDisposable(Disposable disposable) {
         synchronized (lifecycle) {
@@ -237,19 +245,26 @@ public final class FiberImpl implements Fiber {
     public Disposable effect(EffectRunner runner, String label) {
         assertActive();
         List<Disposable> collected = new ArrayList<>();
-        // nested effects registered by this runner grow the fiber's lists; on a
-        // throwing runner they must be disposed immediately (mirrors Cordis's
-        // `_execute` catch → `dispose()` for already-collected disposables)
-        int registeredBefore;
-        synchronized (lifecycle) {
-            registeredBefore = disposables.size();
+        // nested effects registered by this runner are tracked by object (see
+        // IN_FLIGHT); a throwing runner disposes exactly those, never the
+        // effects another thread registered concurrently (dispose.spec
+        // 'yield with error')
+        boolean topLevel = IN_FLIGHT.get() == null;
+        List<Disposable> inFlight = null;
+        if (topLevel) {
+            inFlight = new ArrayList<>();
+            IN_FLIGHT.set(inFlight);
         }
         EffectResult result;
         try {
             result = runner.run(ctx);
         } catch (Throwable error) {
-            disposeTail(registeredBefore);
+            disposeInFlight(inFlight);
             throw error;
+        } finally {
+            if (topLevel) {
+                IN_FLIGHT.remove();
+            }
         }
         EffectMeta meta = new EffectMeta(label, new ArrayList<>());
         if (result instanceof EffectResult.Noop) {
@@ -271,30 +286,31 @@ public final class FiberImpl implements Fiber {
         synchronized (lifecycle) {
             disposables.add(wrapper);
             effectMetas.add(meta);
+            // nested effects register under the enclosing runner's collector
+            List<Disposable> owner = IN_FLIGHT.get();
+            if (owner != null) {
+                owner.add(wrapper);
+            }
         }
         return wrapper;
     }
 
-    /** Disposes (reverse order) and removes the effect tail starting at {@code from}. */
-    private void disposeTail(int from) {
-        List<Disposable> snapshot;
-        synchronized (lifecycle) {
-            if (disposables.size() <= from) {
-                while (effectMetas.size() > from) {
-                    effectMetas.remove(effectMetas.size() - 1);
+    /**
+     * Disposes (reverse order) the nested effects a failed runner registered.
+     * Each tracked disposable is removed from the fiber's lists first, so
+     * concurrent registrations from other threads stay untouched.
+     */
+    private void disposeInFlight(List<Disposable> inFlight) {
+        if (inFlight == null || inFlight.isEmpty()) return;
+        for (int i = inFlight.size() - 1; i >= 0; i--) {
+            Disposable disposable = inFlight.get(i);
+            synchronized (lifecycle) {
+                disposables.remove(disposable);
+                if (disposable instanceof EffectDisposable child) {
+                    effectMetas.remove(child.meta());
                 }
-                return;
             }
-            snapshot = new ArrayList<>(disposables.subList(from, disposables.size()));
-            while (disposables.size() > from) {
-                disposables.remove(disposables.size() - 1);
-            }
-            while (effectMetas.size() > from) {
-                effectMetas.remove(effectMetas.size() - 1);
-            }
-        }
-        for (int i = snapshot.size() - 1; i >= 0; i--) {
-            snapshot.get(i).dispose();
+            disposable.dispose();
         }
     }
 

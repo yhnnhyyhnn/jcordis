@@ -78,7 +78,10 @@ public final class Entry {
             options.merge(source);
         }
 
-        if (Boolean.TRUE.equals(options.disabled) || disabledByAncestor()) {
+        // groups are always enabled (mirrors Cordis's Entry.disabled): a
+        // disabled flag on the group itself is ignored, though it still
+        // disables its children via the ancestor chain
+        if (!Boolean.TRUE.equals(options.group) && (Boolean.TRUE.equals(options.disabled) || disabledByAncestor())) {
             if (fiber != null) {
                 fiber.disposeAsync().join();
                 fiber = null;

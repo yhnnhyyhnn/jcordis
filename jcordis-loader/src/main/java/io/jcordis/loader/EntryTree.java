@@ -128,6 +128,23 @@ public abstract class EntryTree {
         entry.update(options, false, true);
     }
 
+    /**
+     * Moves the entry to another group ({@code null} = root), reloading it
+     * under the target group's context. Mirrors Cordis's
+     * {@code EntryTree.update(id, options, parent)} with an explicit parent.
+     */
+    public void transfer(String id, String parent) {
+        Entry entry = resolve(id);
+        EntryGroup source = entry.parent;
+        EntryGroup target = parent == null ? root : resolveGroup(parent);
+        source.unlink(entry.options);
+        target.data.add(entry.options);
+        target.tree.write();
+        entry.parent = target;
+        source.tree.write();
+        entry.update(new EntryOptions(), false, true);
+    }
+
     /** Resolves the plugin body for the given entry name. */
     public abstract Plugin importPlugin(String name);
 

@@ -21,15 +21,15 @@ public final class RegistryService {
 
     private final Context ctx;
     private final Map<Plugin, PluginRuntime> internal = new ConcurrentHashMap<>();
-    private int counter;
+    private final java.util.concurrent.atomic.AtomicInteger counter = new java.util.concurrent.atomic.AtomicInteger();
 
     public RegistryService(Context ctx) {
         this.ctx = ctx;
     }
 
-    /** Assigns a unique id for each new plugin fiber. */
+    /** Assigns a unique id for each new plugin fiber (thread-safe). */
     public int counter() {
-        return ++counter;
+        return counter.incrementAndGet();
     }
 
     public int size() {

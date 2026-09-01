@@ -997,3 +997,40 @@ Tests run: 182, Failures: 0 -- 总计（无新增测试，行为零变更）
 Reactor: jcordis 10/10 模块 SUCCESS, BUILD SUCCESS
 mvn -Pformat spotless:check -- BUILD SUCCESS
 ```
+
+---
+
+## 推进：并发审计 + transfer 语义 + 架构图（2026-08-27）
+
+### 1. 并发审计修复（第 2 项）
+
+| 缺陷 | 修复 |
+|---|---|
+| `ReflectService.provide` 的重复注册检查非原子（`containsKey`+`put`）→ 并发 provide 同名全成功、值被覆盖 | `store.putIfAbsent`（**原子比较-交换**）：恰一个赢家，其余抛 "already registered" |
+| `RegistryService.counter` 非原子 `++` → uid 并发重复 | `AtomicInteger.incrementAndGet` |
+| `LoggerService.buffer` ArrayList 无同步 → 多线程 log 竞争 | **Monitor 锁**（`bufferLock`）保护 add/remove；`snMessage`/`snExporter` 原子化 |
+| `FiberImpl.disposeTail(index)` 按尾部下标处置 → 并发 effect 时误删其他线程注册的 wrapper（探针证实：并发 provide 赢家的服务被 loser 的 rollback 误删） | 改**线程局部对象追踪**（`IN_FLIGHT` ThreadLocal）：runner 抛错只处置**本线程**注册的嵌套效应（按对象移除，不动并发注册） |
+
+| 测试 | 覆盖 |
+|---|---|
+| `ConcurrencyTest`（5 例） | 并发 uid 唯一 / 并发 provide 恰一赢家 / 并发事件全送达 / 并发日志 buffer 不损坏 / 并发插件创建销毁一致 |
+
+### 2. loader transfer（第 4 项）
+
+| 项 | 内容 |
+|---|---|
+| API | 新增 `EntryTree.transfer(id, parent)`（parent=null 移回 root）——区分 `update(id, options, parent)` 的"parent 非 null 才移动"语义（参考的 `update(id, {}, null)` 表示移回 root，jcordis 原 API 无法表达） |
+| 修复 | `Entry.update` disabled 分支忽略 group 自身（**group 恒 enabled**，对齐参考 `Entry.disabled`）——disabled group 仍 init 建 subgroup，resolveGroup 可用 |
+| 测试 | `LoaderTransferTest`（3 例）：移入 group（id 前缀 + 重载 + locate）/ 移入 disabled group（祖先链 dispose + 移回恢复）/ 配置与 isolate 随行 |
+
+### 3. 架构图（第 3 项）
+
+`docs/architecture.drawio` examples 节点补 hmr-app（热重载演示）；png 需在 draw.io 重新导出。
+
+### 验证结果
+
+```
+Tests run: 190, Failures: 0 -- 总计（ConcurrencyTest +5，LoaderTransferTest +3）
+Reactor: jcordis 10/10 模块 SUCCESS, BUILD SUCCESS
+mvn -Pformat spotless:check -- BUILD SUCCESS
+```
