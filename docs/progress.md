@@ -871,3 +871,31 @@ Reactor: jcordis 9/9 模块 SUCCESS, BUILD SUCCESS
 mvn -Pformat spotless:check -- BUILD SUCCESS
 mvn help:effective-pom -Prelease -- 发布配置（sources/javadoc/gpg/ossrh）就位
 ```
+
+---
+
+## 推进：HMR 端到端演示示例（2026-08-27）
+
+### `examples/hmr-app`（新增模块，reactor 10/10）
+
+| 项 | 内容 |
+|---|---|
+| `HmrApp` | 开发模式入口：Context + Loader + `Hmr`（轮询 jcordis.yml 配置热重载）+ `JarWatcher`（监视 plugins/ 目录 jar 热替换）；首跑自动生成初始配置 |
+| `GreeterPlugin` | 配置驱动演示插件（`greeting` 字段变化即重启生效） |
+| `HmrAppTest` | 端到端 2 例：① 配置变更 → 插件重载（bonjour）+ 条目移除 → dispose；② jar 替换（fixture V1→V2，探针 `jcordis.probe.version`）→ 原子热替换 |
+| fixture | `src/test/fixtures` 独立编译到 `test-fixtures-classes`（脱离宿主 classpath），复用 loader 的 jar 隔离约定 |
+
+### 顺带修复：Hmr mtime 毫秒粒度漏检
+
+| 项 | 内容 |
+|---|---|
+| 问题 | Hmr 用 `getLastModifiedTime().toMillis()` 比较，同一毫秒内的连续写入被漏检（演示测试暴露：hello 写入后立即写 bonjour，两事件 mtime 相同） |
+| 修复 | 改用 `FileTime` 精确比较（`equals`，NTFS 100ns 精度）——快速连续写入不再丢失；示例测试连续 3 次运行稳定 |
+
+### 验证结果
+
+```
+Tests run: 177, Failures: 0 -- 总计（hmr-app +2）
+Reactor: jcordis 10/10 模块 SUCCESS, BUILD SUCCESS
+mvn -Pformat spotless:check -- BUILD SUCCESS
+```

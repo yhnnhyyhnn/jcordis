@@ -29,6 +29,7 @@
     <module>examples/hello-world</module>
     <module>examples/service-graph</module>
     <module>examples/config-app</module>
+    <module>examples/hmr-app</module>
   </modules>
 
   <properties>

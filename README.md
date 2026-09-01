@@ -51,7 +51,7 @@ Scaffolding tools ──generate──> Consumers (business apps / examples / pl
 | `jcordis-cli` | `Scaffolder` engine + CLI entry point | core |
 | `jcordis-maven-plugin` | Maven plugin: `create` / `create-plugin` / `check` | — |
 | `jcordis-all` | **Aggregate jar**: shades all runtime modules (except maven-plugin) into a single jar — one coordinate for business systems | core + loader + cli |
-| `examples/*` | hello-world / service-graph / config-app examples + demo-plugin (standalone plugin example, not part of the reactor build) | — |
+| `examples/*` | hello-world / service-graph / config-app / hmr-app (hot reload demo) examples + demo-plugin (standalone plugin example, not part of the reactor build) | — |
 
 ## Requirements
 
@@ -107,5 +107,5 @@ Plugin projects produce a **clean jar**: only plugin classes + a `META-INF/servi
 ## Build & Test
 
 ```bash
-mvn clean verify   # 9/9 modules, 175 tests green
+mvn clean verify   # 9/9 modules, 177 tests green
 ```

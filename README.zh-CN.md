@@ -107,5 +107,5 @@ mvn io.jcordis:jcordis-maven-plugin:0.1.0-SNAPSHOT:create-plugin -Dname=demo-plu
 ## 构建与测试
 
 ```bash
-mvn clean verify   # 9/9 模块，175 测试全绿
+mvn clean verify   # 9/9 模块，177 测试全绿
 ```

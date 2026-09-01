@@ -38,7 +38,7 @@ public final class Hmr implements Runnable {
     private final long interval;
 
     private final AtomicBoolean running = new AtomicBoolean(false);
-    private long lastModified;
+    private java.nio.file.attribute.FileTime lastModified;
     private List<EntryOptions> data;
 
     public Hmr(Context ctx, Loader loader, Map<String, Object> config) {
@@ -56,7 +56,7 @@ public final class Hmr implements Runnable {
         try {
             data = readConfig();
             loader.root.update(data);
-            lastModified = Files.getLastModifiedTime(configPath).toMillis();
+            lastModified = Files.getLastModifiedTime(configPath);
         } catch (IOException e) {
             ctx.logger().error("cannot read initial config: " + configPath, e);
         }
@@ -86,13 +86,15 @@ public final class Hmr implements Runnable {
 
     private void check() {
         if (!Files.exists(configPath)) return;
-        long mtime;
+        java.nio.file.attribute.FileTime mtime;
         try {
-            mtime = Files.getLastModifiedTime(configPath).toMillis();
+            // exact FileTime comparison (not millis): rapid successive writes
+            // within the same millisecond must still be detected
+            mtime = Files.getLastModifiedTime(configPath);
         } catch (IOException e) {
             return;
         }
-        if (mtime == lastModified) return;
+        if (mtime.equals(lastModified)) return;
         lastModified = mtime;
 
         List<EntryOptions> next;
