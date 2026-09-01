@@ -4,6 +4,7 @@ import io.jcordis.core.context.Context;
 import io.jcordis.core.fiber.Fiber;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.CopyOnWriteArrayList;
 
 /**
  * A group of entries under a tree node, mirroring Cordis's {@code EntryGroup}.
@@ -12,7 +13,7 @@ public final class EntryGroup {
 
     public final Context ctx;
     public final EntryTree tree;
-    public final List<EntryOptions> data = new ArrayList<>();
+    public final List<EntryOptions> data = new CopyOnWriteArrayList<>();
 
     public EntryGroup(Context ctx, EntryTree tree) {
         this.ctx = ctx;

@@ -1067,3 +1067,39 @@ Tests run: 194, Failures: 0 -- 总计（NotifyStressTest +4）
 Reactor: jcordis 10/10 模块 SUCCESS, BUILD SUCCESS
 mvn -Pformat spotless:check -- BUILD SUCCESS
 ```
+
+---
+
+## 推进：树并发修复 + 聚合 jar 端到端 + 插件文档（2026-08-27）
+
+### 1. EntryGroup 树并发（第 2 项）
+
+| 缺陷 | 修复 |
+|---|---|
+| `EntryGroup.data`（ArrayList）被 HMR 线程 `update`（clear+addAll）与应用线程 `create/remove`（add）并发写——压力测试实测快照含 null（NPE "options is null"，ArrayList addAll/add 竞态） | 改 `CopyOnWriteArrayList`（单操作原子） |
+
+| 测试 | 覆盖 |
+|---|---|
+| `TreeConcurrencyTest`（1 例） | HMR 式整树重写（200 轮） vs 应用式 create/remove/entries 并发——任何数据损坏类异常（CME/AIOOBE/NPE）即失败；逻辑 not-found 竞态可接受（连续 5 轮全绿） |
+
+### 2. 聚合 jar 端到端运行（第 3 项）
+
+`AggregateJarE2eIT`：用**独立 URLClassLoader**（parent=平台加载器，classpath = 聚合 jar + 传递三方依赖，与业务系统消费方式一致）从 `jcordis-all` jar 加载类并反射驱动 Loader 流程（Context.create → Loader → mock 插件 → read → expectFiber）。断言：
+- 类确实来自聚合 jar（CodeSource 校验）
+- Loader/EntryOptions/Plugin 全流程在 jar 内可运行
+
+### 3. 插件开发文档（第 4 项）
+
+新增 `docs/plugin-development.md`（英文）：Plugin 契约（三种编写风格）、干净 jar 打包（SPI 清单 + check goal 黑名单）、运行时加载与类隔离（PluginClassLoader parent-first + close 回收）、热替换（loadJar/replaceJar/unload + JarWatcher/Hmr）、依赖模型。README Documentation 表补链接。
+
+### 4. 图片还原
+
+`drawio-headless` 渲染的 architecture.png 质量不达标，`git` 还原原始版本（2000×2315）；drawio 源文件的 hmr-app 更新保留（文本编辑无损）。
+
+### 验证结果
+
+```
+Tests run: 196, Failures: 0 -- 总计（TreeConcurrencyTest +1，AggregateJarE2eIT +1）
+Reactor: jcordis 10/10 模块 SUCCESS, BUILD SUCCESS
+mvn -Pformat spotless:check -- BUILD SUCCESS
+```
