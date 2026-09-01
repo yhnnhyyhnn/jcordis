@@ -203,7 +203,17 @@ public final class FiberImpl implements Fiber {
     public Disposable effect(EffectRunner runner, String label) {
         assertActive();
         List<Disposable> collected = new ArrayList<>();
-        EffectResult result = runner.run(ctx);
+        // nested effects registered by this runner grow the fiber's lists; on a
+        // throwing runner they must be disposed immediately (mirrors Cordis's
+        // `_execute` catch → `dispose()` for already-collected disposables)
+        int registeredBefore = disposables.size();
+        EffectResult result;
+        try {
+            result = runner.run(ctx);
+        } catch (Throwable error) {
+            disposeTail(registeredBefore);
+            throw error;
+        }
         EffectMeta meta = new EffectMeta(label, new ArrayList<>());
         if (result instanceof EffectResult.Noop) {
             // no disposables
@@ -224,6 +234,19 @@ public final class FiberImpl implements Fiber {
         disposables.add(wrapper);
         effectMetas.add(meta);
         return wrapper;
+    }
+
+    /** Disposes (reverse order) and removes the effect tail starting at {@code from}. */
+    private void disposeTail(int from) {
+        for (int i = disposables.size() - 1; i >= from; i--) {
+            disposables.get(i).dispose();
+        }
+        if (disposables.size() > from) {
+            disposables.subList(from, disposables.size()).clear();
+        }
+        if (effectMetas.size() > from) {
+            effectMetas.subList(from, effectMetas.size()).clear();
+        }
     }
 
     private void collectEffect(List<Disposable> collected, EffectMeta meta, Disposable disposable) {

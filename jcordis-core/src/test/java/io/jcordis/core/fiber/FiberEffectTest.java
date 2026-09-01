@@ -101,6 +101,24 @@ class FiberEffectTest {
     }
 
     @Test
+    void effectRunnerError_shouldDisposeNestedEffectsImmediately() {
+        List<String> log = new ArrayList<>();
+
+        // mirrors dispose.spec 'yield with error': nested effects registered
+        // before the throw are disposed right away, and the error propagates
+        assertThatThrownBy(() -> ctx.effect(
+                        r -> {
+                            ctx.effect(r2 -> EffectResult.of(() -> log.add("nested-dispose")), "ctx.on(\"custom\")");
+                            throw new IllegalStateException("my error");
+                        },
+                        "outer"))
+                .hasMessage("my error");
+
+        assertThat(log).as("nested effect disposed on runner failure").containsExactly("nested-dispose");
+        assertThat(ctx.fiber().getEffects()).as("no leftover effect metadata").isEmpty();
+    }
+
+    @Test
     void effectDispose_shouldInvokeCollectedDisposable() {
         List<String> log = new ArrayList<>();
 

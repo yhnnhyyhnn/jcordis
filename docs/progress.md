@@ -801,3 +801,36 @@ Tests run: 171, Failures: 0 -- 总计（新增 6 个测试）
 Reactor: jcordis 9/9 模块 SUCCESS, BUILD SUCCESS
 mvn -Pformat spotless:check -- BUILD SUCCESS
 ```
+
+---
+
+## 推进：错误语义 / CI 门禁 / 对照表刷新（2026-08-27）
+
+### 1. effect runner 抛错时嵌套效应立即处置（dispose.spec "yield with error"）
+
+| 项 | 内容 |
+|---|---|
+| 改动 | `FiberImpl.effect()` 在 `runner.run` 抛错时，对 run 期间注册的嵌套效应（disposables/effectMetas 尾部）立即**逆序处置并移除**后重抛（对齐参考 `_execute` catch → `dispose()`）；新增 `disposeTail(from)` 辅助 |
+| 测试 | `FiberEffectTest.effectRunnerError_shouldDisposeNestedEffectsImmediately`（嵌套效应即时处置 + 无遗留元数据 + 错误传播） |
+
+### 2. CI 门禁：spotless 校验接入
+
+| 项 | 内容 |
+|---|---|
+| 改动 | `.github/workflows/ci.yml` 在 `mvn clean verify` 后追加 `mvn -Pformat spotless:check`——防止格式债务回归（本轮已全量清理，此前仓库有 11 处格式问题） |
+
+### 3. docs/compatibility.md 权威对照表刷新
+
+| 项 | 变更 |
+|---|---|
+| 第一节 | 新增 4 行：内部事件链（internal/get+set 瀑布、internal/status）、失败恢复（FAILED→update 恢复）、效应可观测性（getEffects）、依赖响应补 `Impl.check` 谓词；Loader 行补 config 变更重启/intercept 传播/entry inject/await/locate/partial-dispose |
+| 第二节 | 新增 3 行：`Service.resolveConfig`、entry inject 合并时机、`Loader[Service.check]` await 门控 |
+| 第三节 | `internal/get`/`internal/set` 瀑布从"简化"改为 ✅ 已实现；`internal/status` 改为"已发射，消费方留待后续" |
+
+### 验证结果
+
+```
+Tests run: 172, Failures: 0 -- 总计（新增 1 个测试）
+Reactor: jcordis 9/9 模块 SUCCESS, BUILD SUCCESS
+mvn -Pformat spotless:check -- BUILD SUCCESS（CI 门禁同步）
+```
