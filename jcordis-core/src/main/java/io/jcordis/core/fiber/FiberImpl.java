@@ -423,7 +423,10 @@ public final class FiberImpl implements Fiber {
         }
         disposables.clear();
         effectMetas.clear();
-        store.clear();
+        // the dependency cache (`store`) is deliberately NOT cleared: it is the
+        // resolution snapshot used by refresh() — a restart must be able to
+        // re-resolve dependencies that are still available (mirrors Cordis
+        // keeping `_store` across `_unload`). checkImpl() on notify updates it.
         transitionState(FiberState.PENDING);
     }
 

@@ -44,7 +44,7 @@
 | 动态模块加载 | Node ESM `import()` + ModuleLoader | SPI 注册表（builtins/modules） | `Loader.importPlugin(name)` 查表；动态编译列为增强项 |
 | HMR 插件源码热重载 | V8 模块缓存清除 + re-import | 仅配置文件变更 → 树 diff 重载（`Hmr`） | Java 无法动态重编译类 |
 | 配置表达式求值 | `with(ctx){eval()}` | **纯数据插值**（方案 A） | 安全决策：不执行任意表达式，预留 Evaluator 接口 |
-| isolate Realm 完整语义 | LocalRealm/GlobalRealm 7 步切换 + 服务 impl 迁移 | Realm 基类已建，核心隔离（`isolate(name, key)`）可用；**realm 引用传递/impl 迁移未实现** | 复杂度高 |
+| isolate Realm 完整语义 | LocalRealm/GlobalRealm 7 步切换 + 服务 impl 迁移 | LocalRealm/GlobalRealm + realm GC（partial-dispose 消费）+ **isolate 变更走插件重启**（副作用重执行，非 impl 原地迁移）；服务 impl 原地迁移未实现 | 参考用 prototype 原地交换，jcordis 为不可变 ctx 拷贝模型 |
 | `internal/get`/`internal/set` 瀑布 | 完整 waterfall 链 | ✅ 已实现（见第一节；尾端语义与参考一致） | 2026-08 对齐修正 |
 | 调用者追踪（traceable） | JS Proxy + `symbols.tracker` | 未移植 | 影响：outer-caller intercept 覆盖、logger 调用栈 name 恢复不可用 |
 | `internal/status` 事件消费 | fiber 状态变化通知 | 事件已发射（`transitionState`）；**消费方**（状态跟踪服务）留待后续 | |

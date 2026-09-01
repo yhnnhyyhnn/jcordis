@@ -71,6 +71,7 @@ public final class Entry {
         // reference to both fields, making a post-copy comparison tautological)
         EntryOptions.Snapshot legacy = options.snapshot();
         Object legacyConfig = options.config;
+        Map<String, Object> legacyIsolate = options.isolate;
         if (create) {
             copyInto(source, options);
         } else {
@@ -91,7 +92,9 @@ public final class Entry {
 
         if (fiber == null) {
             init();
-        } else if (force || !java.util.Objects.equals(options.config, legacyConfig)) {
+        } else if (force
+                || !java.util.Objects.equals(options.config, legacyConfig)
+                || isolateChanged(legacyIsolate, options)) {
             // mirror Cordis: emit the partial-dispose event before reloading
             ctx.events().emit((Object) null, "loader/partial-dispose", this, legacy, true);
             rebuildCtx();
@@ -99,7 +102,39 @@ public final class Entry {
             // fiber before restart (mirrors Cordis's Object.setPrototypeOf patch)
             fiber.rebindContext(ctx);
             fiber.update(resolveConfig(), true);
+            // isolate moves re-key services: notify the changed names so
+            // dependents re-resolve under their (rebound) realms — mirrors
+            // Cordis's isolate plugin patch-context step 6
+            java.util.Set<String> changed = changedIsolateNames(legacyIsolate, options);
+            if (!changed.isEmpty()) {
+                ctx.reflect().notify(java.util.List.copyOf(changed), ctx);
+            }
         }
+    }
+
+    /** Whether the isolate option map changed (label/local-realm moves). */
+    private static boolean isolateChanged(Map<String, Object> legacy, EntryOptions options) {
+        if (legacy == null) {
+            return options.isolate != null && !options.isolate.isEmpty();
+        }
+        if (options.isolate == null) {
+            return !legacy.isEmpty();
+        }
+        return !legacy.equals(options.isolate);
+    }
+
+    /** Names whose isolate label actually changed (for post-reload notification). */
+    private static java.util.Set<String> changedIsolateNames(Map<String, Object> legacy, EntryOptions options) {
+        java.util.Set<String> changed = new java.util.LinkedHashSet<>();
+        if (legacy != null) {
+            changed.addAll(legacy.keySet());
+        }
+        if (options.isolate != null) {
+            changed.addAll(options.isolate.keySet());
+        }
+        changed.removeIf(name -> java.util.Objects.equals(
+                legacy != null ? legacy.get(name) : null, options.isolate != null ? options.isolate.get(name) : null));
+        return changed;
     }
 
     /** Whether an ancestor entry is disabled (groups are always enabled). */

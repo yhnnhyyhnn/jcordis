@@ -899,3 +899,33 @@ Tests run: 177, Failures: 0 -- 总计（hmr-app +2）
 Reactor: jcordis 10/10 模块 SUCCESS, BUILD SUCCESS
 mvn -Pformat spotless:check -- BUILD SUCCESS
 ```
+
+---
+
+## 推进：isolate 变更路径修复（2026-08-27）
+
+### 1. 缺口：`loader.read()`（配置文件/HMR 路径）isolate-only 变更被丢弃
+
+| 项 | 内容 |
+|---|---|
+| 问题 | `Entry.update` 的重启分支条件是 `force \|\| config 变更`；`loader.read`（EntryGroup.update）走 `force=false`，isolate-only 变更（config 不变）被静默忽略——realm 移动不生效 |
+| 修复 | 新增 `isolateChanged()` 判定并纳入重启分支；重启后对**变更的隔离名**显式 `reflect().notify(...)`（对齐参考 isolate 插件 patch-context 步骤 6），使 rebind 后的依赖方按新 realm 重新解析 |
+| 测试 | `EntryIsolateChangeTest.isolateChangeViaRead_shouldMoveRealms`：a 移出 realm → b（声明 inject）卸载；b 跟随移入 → 重载并重新看到服务 |
+
+### 2. 顺带修复：`unloadBody` 清空依赖缓存破坏 restart 重解析
+
+| 项 | 内容 |
+|---|---|
+| 问题 | jcordis 把参考的 `_store`（依赖解析缓存，跨 unload 保留）与 `store`（body 快照）合并为一个 map，`unloadBody` 全清 → 带 inject 的插件 restart 后 `refresh` 无法重解析仍可用的依赖（参考 `_store` 不随 `_unload` 清空） |
+| 修复 | `unloadBody` 不再清 `store`（依赖缓存保留；notify 路径经 `checkImpl` 增删）；`unload()`（完全销毁）仍清空 |
+
+### 3. 文档
+
+`compatibility.md` 裁剪表更新 isolate 行：realm GC 已实现；isolate 变更走插件重启（副作用重执行），服务 impl 原地迁移未实现（参考为 prototype 原地交换，jcordis 是不可变 ctx 拷贝模型）。
+
+### 验证结果
+
+```
+Tests run: 178, Failures: 0 -- 总计（EntryIsolateChangeTest +1）
+Reactor: jcordis 10/10 模块 SUCCESS, BUILD SUCCESS
+```
