@@ -107,18 +107,32 @@ public final class Logger {
         String apply(Object value, Exporter exporter, Message message);
     }
 
+    /**
+     * Formatting strategies keyed by placeholder letter (strategy registry,
+     * mirrors Cordis's {@code defaultFormatters}).
+     */
+    private static final java.util.Map<String, Formatter> FORMATTERS = buildFormatters();
+
+    private static java.util.Map<String, Formatter> buildFormatters() {
+        java.util.Map<String, Formatter> formatters = new java.util.HashMap<>();
+        formatters.put("s", (value, exporter, message) -> String.valueOf(value));
+        Formatter number =
+                (value, exporter, message) -> String.valueOf((long) Double.parseDouble(String.valueOf(value)));
+        formatters.put("d", number);
+        formatters.put("i", number);
+        formatters.put("f", (value, exporter, message) -> String.valueOf(Double.parseDouble(String.valueOf(value))));
+        Formatter object = (value, exporter, message) -> value == null ? "null" : String.valueOf(value);
+        formatters.put("o", object);
+        formatters.put("O", object);
+        formatters.put("c", (value, exporter, message) -> "");
+        // %C colors the value with the message name's palette code (mirrors Cordis)
+        formatters.put(
+                "C", (value, exporter, message) -> color(exporter, code(message.name(), exporter.colors()), value));
+        return java.util.Map.copyOf(formatters);
+    }
+
     private static Formatter formatter(String spec) {
-        return switch (spec) {
-            case "s" -> (value, exporter, message) -> String.valueOf(value);
-            case "d", "i" -> (value, exporter, message) ->
-                    String.valueOf((long) Double.parseDouble(String.valueOf(value)));
-            case "f" -> (value, exporter, message) -> String.valueOf(Double.parseDouble(String.valueOf(value)));
-            case "o", "O" -> (value, exporter, message) -> value == null ? "null" : String.valueOf(value);
-            case "c" -> (value, exporter, message) -> "";
-                // %C colors the value with the message name's palette code (mirrors Cordis)
-            case "C" -> (value, exporter, message) -> color(exporter, code(message.name(), exporter.colors()), value);
-            default -> (value, exporter, message) -> "%" + spec + value;
-        };
+        return FORMATTERS.getOrDefault(spec, (value, exporter, message) -> "%" + spec + value);
     }
 
     private static final int[] C16 = {6, 2, 3, 4, 5, 1};

@@ -966,3 +966,34 @@ Tests run: 182, Failures: 0 -- 总计（FiberAsyncTest +4）
 Reactor: jcordis 10/10 模块 SUCCESS, BUILD SUCCESS
 mvn -Pformat spotless:check -- BUILD SUCCESS
 ```
+
+---
+
+## 推进：设计模式应用走查（2026-08-27）
+
+对照参考结构与"模式服务于真实需求"原则，走查补充两处自然模式点并标注隐式模式：
+
+### 1. TimerService `_schedule` 提炼（模板方法 / 回调注入）
+
+| 项 | 内容 |
+|---|---|
+| 改动 | throttle/debounce 重复的"pending future 管理 + effect 注册 disposer"结构提炼为 `schedule(label, Trigger)`：wrapper 取消旧任务 → 注入的调度策略（`Trigger` 函数接口）决定立即执行/调度/丢弃；`isDisposed` 标志经 effect disposer 置位（对齐参考 `TimerService._schedule(label, trigger, isDisposed)`） |
+| 行为 | 不变（TimerTest 9 例通过），noTrailing/isDisposed 语义保持 |
+
+### 2. Logger formatter 策略注册表（Strategy）
+
+| 项 | 内容 |
+|---|---|
+| 改动 | `formatter(spec)` 的 switch 改为 `FORMATTERS` Map 查表（对齐参考 `defaultFormatters` 记录映射）；`d`/`i`、`o`/`O` 共享同一策略实例 |
+
+### 3. patterns.md 隐式模式标注
+
+新增 3 行隐式标注：**Adapter**（`Plugin.constructor(Class)`/`Plugin.object` 类/对象适配、`Timer` 组合）、**Proxy**（`PluginClassLoader` jar 隔离代理、`TimerService.scheduler` 懒加载）、**Flyweight**（`ServiceKey.of` 共享键、`EventOptions.of` 常量）。
+
+### 验证结果
+
+```
+Tests run: 182, Failures: 0 -- 总计（无新增测试，行为零变更）
+Reactor: jcordis 10/10 模块 SUCCESS, BUILD SUCCESS
+mvn -Pformat spotless:check -- BUILD SUCCESS
+```

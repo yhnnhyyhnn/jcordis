@@ -9,6 +9,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 
 /**
@@ -122,61 +123,66 @@ public class TimerService extends Service {
                 "ctx.interval()");
     }
 
-    /** Returns a throttled wrapper: at most one call per {@code delay} window. */
-    public Timer throttle(Runnable callback, long delay, boolean noTrailing) {
-        AtomicLong lastCall = new AtomicLong(0);
+    /**
+     * Shared throttle/debounce machinery: an effect-registered disposer plus a
+     * wrapper that cancels the pending task before re-arming it. The actual
+     * scheduling policy is injected per call site (template-method style,
+     * mirrors Cordis's {@code TimerService._schedule}).
+     */
+    private Timer schedule(String label, Trigger trigger) {
         ScheduledFuture<?>[] pending = new ScheduledFuture[1];
-        Runnable wrapper = () -> {
-            long now = System.currentTimeMillis();
-            long last = lastCall.get();
-            long elapsed = last == 0 ? Long.MAX_VALUE : now - last;
-            if (elapsed >= delay) {
-                lastCall.set(now);
-                callback.run();
-            } else if (!noTrailing) {
-                long remaining = delay - elapsed;
-                if (pending[0] != null) {
-                    pending[0].cancel(true);
-                }
-                pending[0] = scheduler()
-                        .schedule(
-                                () -> {
-                                    lastCall.set(System.currentTimeMillis());
-                                    callback.run();
-                                },
-                                remaining,
-                                TimeUnit.MILLISECONDS);
-            }
-        };
-        return new Timer(
-                wrapper,
-                ctx.effect(
-                        runner -> EffectResult.of(() -> {
-                            if (pending[0] != null) {
-                                pending[0].cancel(true);
-                            }
-                        }),
-                        "ctx.throttle()"));
-    }
-
-    /** Returns a debounced wrapper: callbacks fire after {@code delay} of silence. */
-    public Timer debounce(Runnable callback, long delay) {
-        ScheduledFuture<?>[] pending = new ScheduledFuture[1];
+        AtomicBoolean isDisposed = new AtomicBoolean(false);
+        Disposable dispose = ctx.effect(
+                runner -> EffectResult.of(() -> {
+                    isDisposed.set(true);
+                    if (pending[0] != null) {
+                        pending[0].cancel(true);
+                    }
+                }),
+                label);
         Runnable wrapper = () -> {
             if (pending[0] != null) {
                 pending[0].cancel(true);
             }
-            pending[0] = scheduler().schedule(callback, delay, TimeUnit.MILLISECONDS);
+            pending[0] = trigger.schedule(isDisposed);
         };
-        return new Timer(
-                wrapper,
-                ctx.effect(
-                        runner -> EffectResult.of(() -> {
-                            if (pending[0] != null) {
-                                pending[0].cancel(true);
-                            }
-                        }),
-                        "ctx.debounce()"));
+        return new Timer(wrapper, dispose);
+    }
+
+    /** Scheduling policy of a {@link #schedule} wrapper. */
+    @FunctionalInterface
+    private interface Trigger {
+        ScheduledFuture<?> schedule(AtomicBoolean isDisposed);
+    }
+
+    /** Returns a throttled wrapper: at most one call per {@code delay} window. */
+    public Timer throttle(Runnable callback, long delay, boolean noTrailing) {
+        AtomicLong lastCall = new AtomicLong(0);
+        Runnable execute = () -> {
+            lastCall.set(System.currentTimeMillis());
+            callback.run();
+        };
+        return schedule("ctx.throttle()", isDisposed -> {
+            long now = System.currentTimeMillis();
+            long last = lastCall.get();
+            long elapsed = last == 0 ? Long.MAX_VALUE : now - last;
+            if (elapsed >= delay) {
+                execute.run();
+                return null;
+            }
+            if (!noTrailing && !isDisposed.get()) {
+                return scheduler().schedule(execute, delay - elapsed, TimeUnit.MILLISECONDS);
+            }
+            return null;
+        });
+    }
+
+    /** Returns a debounced wrapper: callbacks fire after {@code delay} of silence. */
+    public Timer debounce(Runnable callback, long delay) {
+        return schedule("ctx.debounce()", isDisposed -> {
+            if (isDisposed.get()) return null;
+            return scheduler().schedule(callback, delay, TimeUnit.MILLISECONDS);
+        });
     }
 
     /** Shuts down the scheduler (called on fiber teardown). Idempotent. */
