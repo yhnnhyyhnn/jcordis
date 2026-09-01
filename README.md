@@ -129,10 +129,11 @@ Plugin projects produce a **clean jar**: only plugin classes + a `META-INF/servi
 | [Design patterns](docs/patterns.md) | 23 GoF patterns applied (Chinese) |
 | [HMR design](docs/hmr-design.md) | ClassLoader hot-swap, unload semantics, dependency model (Chinese) |
 | [Plugin development](docs/plugin-development.md) | Plugin contract, packaging, isolation, hot reload (English) |
+| [Performance benchmark](docs/perf.md) | Throughput baselines (ns/op), comparison vs Cordis |
 | [Compatibility matrix](docs/compatibility.md) | cordis API mapping (Chinese) |
 
 ## Build & Test
 
 ```bash
-mvn clean verify   # 10/10 modules, 198 tests green
+mvn clean verify   # 10/10 modules, 205 tests green
 ```

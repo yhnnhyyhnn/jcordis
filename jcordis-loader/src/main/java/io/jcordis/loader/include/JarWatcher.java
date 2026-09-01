@@ -16,7 +16,9 @@ import java.util.HexFormat;
 import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Stream;
 
 /**
@@ -40,6 +42,15 @@ public final class JarWatcher implements Runnable {
     private volatile WatchService watchService;
     /** The polling thread, joined on stop so no in-flight handle runs after teardown. */
     private volatile Thread worker;
+    /** Retry scheduler: delayed re-checks for write races (single daemon thread). */
+    private final java.util.concurrent.ScheduledExecutorService retries =
+            java.util.concurrent.Executors.newSingleThreadScheduledExecutor(runnable -> {
+                Thread thread = new Thread(runnable, "jcordis-jar-retry");
+                thread.setDaemon(true);
+                return thread;
+            });
+    /** In-flight or queued retries, tracked so stop() can wait for them. */
+    private final AtomicInteger pendingRetries = new AtomicInteger();
 
     public JarWatcher(Loader loader, Path dir) {
         this.loader = loader;
@@ -74,9 +85,10 @@ public final class JarWatcher implements Runnable {
     }
 
     /**
-     * Stops watching, then waits for the worker to finish its current batch:
-     * no in-flight {@code replaceJar} may hold the jar handle after teardown
-     * (otherwise deleting the jar file fails on Windows).
+     * Stops watching and releases every resource: the worker is interrupted and
+     * joined, and queued/in-flight retries are cancelled and awaited — no
+     * class loader may hold a jar handle after teardown (otherwise deleting
+     * the jar fails on Windows).
      */
     public void stop() {
         running.set(false);
@@ -86,6 +98,11 @@ public final class JarWatcher implements Runnable {
             } catch (IOException e) {
                 // nothing to recover from a failed watch close
             }
+        }
+        retries.shutdownNow();
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(2);
+        while (pendingRetries.get() > 0 && System.nanoTime() < deadline) {
+            Thread.yield();
         }
         Thread thread = worker;
         if (thread != null && thread != Thread.currentThread()) {
@@ -165,22 +182,18 @@ public final class JarWatcher implements Runnable {
      * window where a watch event fires before the file was fully written.
      */
     private void scheduleRetry(String file) {
-        Thread retry = new Thread(
+        pendingRetries.incrementAndGet();
+        java.util.concurrent.CompletableFuture<Void> future = java.util.concurrent.CompletableFuture.runAsync(
                 () -> {
-                    try {
-                        Thread.sleep(200);
-                    } catch (InterruptedException e) {
-                        return;
-                    }
                     // the watcher may have been stopped while we slept: never
                     // load jars after teardown (a fresh class loader would hold
                     // the jar handle and leak it)
                     if (!running.get()) return;
                     handle(Path.of(file), StandardWatchEventKinds.ENTRY_MODIFY);
                 },
-                "jcordis-jar-retry");
-        retry.setDaemon(true);
-        retry.start();
+                java.util.concurrent.CompletableFuture.delayedExecutor(200, TimeUnit.MILLISECONDS, retries));
+        // decrement on completion OR cancellation so stop() can wait precisely
+        future.whenComplete((ignored, error) -> pendingRetries.decrementAndGet());
     }
 
     private static String jarName(Path jar) {

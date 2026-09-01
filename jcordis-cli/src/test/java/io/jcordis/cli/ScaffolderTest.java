@@ -84,4 +84,38 @@ class ScaffolderTest {
 
         assertThat(Files.readString(spi, StandardCharsets.UTF_8)).isEqualTo("demo.plugin.SamplePlugin\n");
     }
+
+    @Test
+    void generatedApp_shouldCompileAndRun() throws Exception {
+        Path dir = Scaffolder.create("test-app", tempDir);
+        Path classes = dir.resolve("target/classes");
+        Files.createDirectories(classes);
+
+        String classpath = System.getProperty("java.class.path");
+        String javac = Path.of(System.getProperty("java.home"), "bin", "javac").toString();
+        String javaBin = Path.of(System.getProperty("java.home"), "bin", "java").toString();
+
+        // compile the generated sources against the current test classpath
+        Process compile = new ProcessBuilder(
+                        javac,
+                        "-cp",
+                        classpath,
+                        "-d",
+                        classes.toString(),
+                        dir.resolve("src/main/java/test/app/Index.java").toString(),
+                        dir.resolve("src/main/java/test/app/SamplePlugin.java").toString())
+                .redirectErrorStream(true)
+                .start();
+        String compileOut = new String(compile.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+        assertThat(compile.waitFor()).as("javac output: " + compileOut).isEqualTo(0);
+
+        // run the generated app: it must boot, load the sample plugin and exit cleanly
+        Process run = new ProcessBuilder(
+                        javaBin, "-cp", classes + System.getProperty("path.separator") + classpath, "test.app.Index")
+                .redirectErrorStream(true)
+                .start();
+        String runOut = new String(run.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+        assertThat(run.waitFor()).as("app run output: " + runOut).isEqualTo(0);
+        assertThat(runOut).contains("sample plugin loaded");
+    }
 }

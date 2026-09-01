@@ -19,7 +19,31 @@ public interface ConfigParser {
 
     /** Parses config file content into an entry list. */
     default List<EntryOptions> read(String content) throws IOException {
-        return mapper().readValue(content, new TypeReference<List<EntryOptions>>() {});
+        List<EntryOptions> entries = mapper().readValue(content, new TypeReference<List<EntryOptions>>() {});
+        normalizeGroups(entries);
+        return entries;
+    }
+
+    /**
+     * Recursively converts group {@code config} lists into {@link EntryOptions}
+     * trees: Jackson only knows the top-level element type, so nested group
+     * configs come back as raw maps and must be normalized here.
+     */
+    private void normalizeGroups(List<EntryOptions> entries) {
+        for (EntryOptions entry : entries) {
+            if (Boolean.TRUE.equals(entry.group) && entry.config instanceof List<?> list) {
+                List<EntryOptions> children = new java.util.ArrayList<>();
+                for (Object item : list) {
+                    if (item instanceof EntryOptions child) {
+                        children.add(child);
+                    } else {
+                        children.add(mapper().convertValue(item, EntryOptions.class));
+                    }
+                }
+                entry.config = children;
+                normalizeGroups(children);
+            }
+        }
     }
 
     /** Serializes an entry list to config file content. */

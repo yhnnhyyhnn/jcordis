@@ -78,8 +78,18 @@ class JarWatcherConcurrencyTest {
         assertThat(failure).hasValue(null);
         assertThat(loader.modules).containsKey("iso");
         watcher.stop();
-        // release the jar handle so @TempDir cleanup can delete it
         loader.unload("iso");
+
+        // verify the jar handle is released before @TempDir cleanup (Windows
+        // may defer handle release slightly past close())
+        for (int attempt = 0; attempt < 20 && Files.exists(jar); attempt++) {
+            try {
+                Files.delete(jar);
+            } catch (IOException e) {
+                Thread.sleep(50);
+            }
+        }
+        assertThat(Files.exists(jar)).as("jar handle released").isFalse();
     }
 
     private static void buildJar(Path jar) throws IOException {

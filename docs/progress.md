@@ -1166,3 +1166,43 @@ Tests run: 198, Failures: 0 -- 总计（无新增测试，示例运行端到端�
 Reactor: jcordis 10/10 模块 SUCCESS, BUILD SUCCESS
 mvn -Pformat spotless:check -- BUILD SUCCESS
 ```
+
+---
+
+## 推进：CLI 运行验证 + config-app 可运行 + 性能基准（2026-08-27）
+
+### 1. CLI 生成模板运行验证（第 2 项）
+
+| 项 | 内容 |
+|---|---|
+| 模板 bug 修复 | `Index.java` 模板里 `root.provide("loader", loader)` 与 Loader 构造自注册冲突（putIfAbsent 抛 "already registered"）→ 删除；模板只 read sample 条目导致 logger-console 不实例化（日志进 buffer 不可见）→ 改为 read logger/timer/sample 三个条目 |
+| 测试 | `ScaffolderTest.generatedApp_shouldCompileAndRun`：javac 编译生成源码 + java 运行生成的 app（断言 `sample plugin loaded` 输出）——端到端验证脚手架产物可用；jcordis-cli 补 loader 测试依赖 |
+
+### 2. config-app 可运行化（第 3 项）
+
+| 项 | 内容 |
+|---|---|
+| `ConfigApp` main | Loader + Include 读 `app.yml`（feature 插件 + group 嵌套），pom 加 exec 插件；实测 `entries loaded: 3 (feature-a + group + nested-feature)` |
+| **真实缺口修复** | YAML group 嵌套 config 不反序列化为 `EntryOptions`（Jackson 只知顶层类型，嵌套 group.config 是原始 Map，`instanceof EntryOptions` 失败 → nested 不加载）→ `ConfigParser.read` 递归 `normalizeGroups`（`convertValue` 转换 + 递归） |
+| 测试 | `ConfigAppTest.yamlConfig_withGroup_shouldLoadNestedEntries`：`resolve("group:nested").fiber` 非空 |
+
+### 3. 性能基准（第 4 项）
+
+`PerfBenchmarkTest`（5 例，无硬断言防 flaky）：fiber 创建+销毁 ~24μs、事件 emit（10 监听器）~0.7μs、effect 注册+处置 ~0.6μs、服务 get ~0.7μs、logger 格式化 ~4.6μs。数据与解读入 `docs/perf.md`（含与 Cordis 的定性对比：显式方法调用替代 Proxy 在服务访问热路径上更优）。
+
+### 4. JarWatcher 句柄泄漏根治（顺带）
+
+| 缺陷 | 修复 |
+|---|---|
+| `scheduleRetry` 每次 spawn 新线程，stop 无法等待 → stop 竞态窗口内 retry 仍加载持句柄 | 改共享单线程池 + `CompletableFuture.delayedExecutor`（取消/完成均可回调）+ `pendingRetries` 计数 + `stop()` 等待 |
+| `replaceJar`/`unload` 中间阶段（entry dispose/reload）抛错时 previous/当前类加载器不 close → 旧 jar 句柄泄漏 | try/finally 保证 close |
+
+验证：JarWatcher 并发测试 + 句柄释放断言连续 15 轮（仅 1 次 Windows 延迟释放，1s 内成功，零失败）。
+
+### 验证结果
+
+```
+Tests run: 205, Failures: 0 -- 总计（PerfBenchmarkTest +5，ConfigAppTest +1，ScaffolderTest +1）
+Reactor: jcordis 10/10 模块 SUCCESS, BUILD SUCCESS
+mvn -Pformat spotless:check -- BUILD SUCCESS
+```

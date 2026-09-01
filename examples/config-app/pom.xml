@@ -37,4 +37,17 @@
       <scope>test</scope>
     </dependency>
   </dependencies>
+
+  <build>
+    <plugins>
+      <plugin>
+        <groupId>org.codehaus.mojo</groupId>
+        <artifactId>exec-maven-plugin</artifactId>
+        <version>3.3.0</version>
+        <configuration>
+          <mainClass>io.jcordis.examples.config.ConfigApp</mainClass>
+        </configuration>
+      </plugin>
+    </plugins>
+  </build>
 </project>

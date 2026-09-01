@@ -230,7 +230,8 @@ public final class Scaffolder {
                 public static void main(String[] args) {
                     Context root = Context.create();
                     Loader loader = new Loader(root);
-                    root.provide("loader", loader);
+                    // the loader registers itself as the 'loader' service in
+                    // its constructor — do NOT provide it again here
                     loader.builtin("@cordisjs/plugin-timer", (ctx, config) -> {
                         new io.jcordis.core.timer.TimerService(ctx);
                         return null;
@@ -241,7 +242,10 @@ public final class Scaffolder {
                     });
                     loader.mock("./sample-plugin", new {{pkg}}.SamplePlugin());
 
-                    loader.read(java.util.List.of(loaderEntry("sample", "./sample-plugin")));
+                    loader.read(java.util.List.of(
+                            loaderEntry("logger", "@cordisjs/plugin-logger-console"),
+                            loaderEntry("timer", "@cordisjs/plugin-timer"),
+                            loaderEntry("sample", "./sample-plugin")));
                     root.logger("{{name}}").info("started");
                 }
 

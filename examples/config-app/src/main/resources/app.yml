@@ -1,14 +1,13 @@
-# config-app example: loader entries
-plugins:
-  - id: feature-a
-    name: feature-plugin
-    config:
-      name: alpha
-  - id: group
-    name: group-plugin
-    group: true
-    config:
-      - id: nested-feature
-        name: feature-plugin
-        config:
-          name: nested
+# config-app example: loader entries (top-level list, as the Include plugin expects)
+- id: feature-a
+  name: feature-plugin
+  config:
+    name: alpha
+- id: group
+  name: group-plugin
+  group: true
+  config:
+    - id: nested-feature
+      name: feature-plugin
+      config:
+        name: nested

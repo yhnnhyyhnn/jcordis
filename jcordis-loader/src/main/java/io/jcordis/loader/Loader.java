@@ -228,23 +228,29 @@ public class Loader extends EntryTree {
         }
         classLoaders.put(name, fresh);
         modules.put(name, plugin);
-        java.util.Set<Entry> reloaded = new java.util.HashSet<>();
-        for (Entry entry : entries()) {
-            if (name.equals(entry.options.name) && entry.fiber != null) {
-                entry.fiber.disposeAsync().join();
-                entry.fiber = null;
-                entry.loaded = false;
-                reloaded.add(entry);
+        try {
+            java.util.Set<Entry> reloaded = new java.util.HashSet<>();
+            for (Entry entry : entries()) {
+                if (name.equals(entry.options.name) && entry.fiber != null) {
+                    entry.fiber.disposeAsync().join();
+                    entry.fiber = null;
+                    entry.loaded = false;
+                    reloaded.add(entry);
+                }
             }
-        }
-        // disposing a fiber marks its entry disabled (self-dispose semantics);
-        // a hot replace must clear that side effect before reloading
-        for (Entry entry : reloaded) {
-            entry.options.disabled = null;
-            entry.refresh();
-        }
-        if (previous != null) {
-            closeQuietly(previous);
+            // disposing a fiber marks its entry disabled (self-dispose
+            // semantics); a hot replace must clear that side effect before
+            // reloading
+            for (Entry entry : reloaded) {
+                entry.options.disabled = null;
+                entry.refresh();
+            }
+        } finally {
+            // even if entry teardown/reload throws, the previous class loader
+            // must be closed — otherwise it holds the old jar handle forever
+            if (previous != null) {
+                closeQuietly(previous);
+            }
         }
         return plugin;
     }
@@ -255,17 +261,22 @@ public class Loader extends EntryTree {
      * class loader so its classes become collectable.
      */
     public void unload(String name) {
-        for (Entry entry : entries()) {
-            if (name.equals(entry.options.name) && entry.fiber != null) {
-                entry.fiber.disposeAsync().join();
-                entry.fiber = null;
-                entry.loaded = false;
+        try {
+            for (Entry entry : entries()) {
+                if (name.equals(entry.options.name) && entry.fiber != null) {
+                    entry.fiber.disposeAsync().join();
+                    entry.fiber = null;
+                    entry.loaded = false;
+                }
             }
-        }
-        modules.remove(name);
-        PluginClassLoader classLoader = classLoaders.remove(name);
-        if (classLoader != null) {
-            closeQuietly(classLoader);
+        } finally {
+            // the class loader must be released even if entry teardown throws,
+            // otherwise the jar handle is held forever
+            modules.remove(name);
+            PluginClassLoader classLoader = classLoaders.remove(name);
+            if (classLoader != null) {
+                closeQuietly(classLoader);
+            }
         }
     }
 

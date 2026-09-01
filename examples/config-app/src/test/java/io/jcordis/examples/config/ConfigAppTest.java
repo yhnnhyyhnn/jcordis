@@ -84,4 +84,46 @@ class ConfigAppTest {
         assertThat(calls).hasValue(1);
         assertThat(loader.entries()).hasSize(2);
     }
+
+    @Test
+    void yamlConfig_withGroup_shouldLoadNestedEntries() throws IOException {
+        Path config = tempDir.resolve("app.yml");
+        Files.writeString(
+                config,
+                """
+                - id: feature-a
+                  name: feature-plugin
+                  config:
+                    name: alpha
+                - id: group
+                  name: group-plugin
+                  group: true
+                  config:
+                    - id: nested
+                      name: feature-plugin
+                      config:
+                        name: nested
+                """,
+                StandardCharsets.UTF_8);
+
+        Context root = Context.create();
+        Loader loader = new Loader(root);
+        AtomicInteger calls = new AtomicInteger();
+        loader.mock("@cordisjs/plugin-include", (ctx, cfg) -> {
+            Include include = new Include(ctx, (Map<String, Object>) cfg);
+            return include.apply(ctx, cfg);
+        });
+        loader.mock("feature-plugin", (ctx, cfg) -> {
+            calls.incrementAndGet();
+            return null;
+        });
+        loader.mock("group-plugin", Loader.GROUP_PLUGIN);
+
+        EntryOptions include = entry("inc", "@cordisjs/plugin-include", Map.of("path", config.toString()));
+        loader.read(List.of(include));
+
+        // the group's nested entry was parsed into the subtree and loaded
+        assertThat(loader.resolve("group:nested").fiber).isNotNull();
+        assertThat(calls).hasValue(2);
+    }
 }
