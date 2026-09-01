@@ -3,6 +3,7 @@ package io.jcordis.loader;
 import io.jcordis.core.context.Context;
 import io.jcordis.core.event.EventOptions;
 import io.jcordis.core.fiber.Fiber;
+import io.jcordis.core.fiber.FiberState;
 import io.jcordis.core.registry.Plugin;
 import java.io.BufferedReader;
 import java.io.IOException;
@@ -10,6 +11,7 @@ import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.util.Map;
+import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.jar.JarEntry;
 import java.util.jar.JarFile;
@@ -33,7 +35,7 @@ public class Loader extends EntryTree {
     public final Map<String, Plugin> modules = new ConcurrentHashMap<>();
 
     /** Shared isolation realms, keyed by their {@code @label} suffix. */
-    private final Map<String, GlobalRealm> realms = new ConcurrentHashMap<>();
+    final Map<String, GlobalRealm> realms = new ConcurrentHashMap<>();
 
     /** Plugin jar class loaders, keyed by plugin name. */
     final Map<String, PluginClassLoader> classLoaders = new ConcurrentHashMap<>();
@@ -91,6 +93,69 @@ public class Loader extends EntryTree {
                         if (!cascaded) {
                             entry.options.disabled = true;
                             entry.parent.tree.write();
+                        }
+                    }
+                    return null;
+                },
+                EventOptions.of(false, false));
+
+        // consume fiber state transitions: lifecycle logging (enableLogs) —
+        // the internal/status event was previously emitted but unconsumed
+        ctx.on(
+                "internal/status",
+                (thisArg, args) -> {
+                    if (args.length < 2 || !enableLogs) return null;
+                    Fiber fiber = (Fiber) args[0];
+                    FiberState oldState = (FiberState) args[1];
+                    if (!(fiber.entry() instanceof Entry entry)) return null;
+                    if (fiber.state() == FiberState.ACTIVE && oldState != FiberState.ACTIVE) {
+                        showLog(entry, "reload");
+                    } else if (fiber.state() != FiberState.ACTIVE && oldState == FiberState.ACTIVE) {
+                        showLog(entry, "unload");
+                    }
+                    return null;
+                },
+                EventOptions.of(false, false));
+
+        // consume entry partial-dispose: garbage-collect global realms whose
+        // isolated names are no longer referenced by any entry (mirrors
+        // Cordis's isolate plugin partial-dispose handler)
+        ctx.on(
+                "loader/partial-dispose",
+                (thisArg, args) -> {
+                    Object entryArg = args.length > 0 ? args[0] : null;
+                    Object legacyArg = args.length > 1 ? args[1] : null;
+                    Boolean active = args.length > 2 ? (Boolean) args[2] : null;
+                    if (!(entryArg instanceof Entry entry)) return null;
+                    EntryOptions legacy = new EntryOptions();
+                    if (legacyArg instanceof EntryOptions.Snapshot snapshot) {
+                        snapshot.restore(legacy);
+                    } else if (legacyArg instanceof EntryOptions options) {
+                        legacy = options;
+                    }
+                    if (legacy.isolate == null) return null;
+                    for (Map.Entry<String, Object> kv : legacy.isolate.entrySet()) {
+                        if (!(kv.getValue() instanceof String label)) continue;
+                        // still in use by the same entry after a config update
+                        if (Boolean.TRUE.equals(active)
+                                && entry.options.isolate != null
+                                && Objects.equals(entry.options.isolate.get(kv.getKey()), label)) {
+                            continue;
+                        }
+                        GlobalRealm realm = realms.get(label);
+                        if (realm == null) continue;
+                        boolean referenced = false;
+                        for (Entry other : entries()) {
+                            if (other.options.isolate != null
+                                    && Objects.equals(other.options.isolate.get(kv.getKey()), label)) {
+                                referenced = true;
+                                break;
+                            }
+                        }
+                        if (referenced) continue;
+                        realm.delete(kv.getKey());
+                        if (realm.size() == 0) {
+                            realms.remove(label);
                         }
                     }
                     return null;

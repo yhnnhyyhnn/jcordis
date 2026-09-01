@@ -6,6 +6,7 @@ import io.jcordis.core.context.Context;
 import io.jcordis.core.registry.Plugin;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
@@ -89,6 +90,86 @@ class LoaderBasicTest {
 
         assertThat(childCalls).hasValue(1);
         assertThat(loader.entries()).hasSize(2);
+    }
+
+    @Test
+    void globalRealm_shouldBeGarbageCollectedWhenUnreferenced() {
+        Context root = Context.create();
+        Loader loader = new Loader(root);
+        loader.mock("a", (ctx, config) -> null);
+        loader.mock("b", (ctx, config) -> null);
+
+        EntryOptions a = entry("a", "a");
+        a.isolate = Map.of("db", "shared");
+        loader.create(a, null);
+        EntryOptions b = entry("b", "b");
+        b.isolate = Map.of("db", "shared");
+        loader.create(b, null);
+        assertThat(loader.realms.get("shared")).isNotNull();
+        assertThat(loader.realms.get("shared").size()).isEqualTo(1);
+
+        // a moves to a different label; b still references @shared → keep
+        EntryOptions a2 = entry("a", "a");
+        a2.isolate = Map.of("db", "other");
+        loader.update("a", a2, null);
+        assertThat(loader.realms.get("shared").size()).isEqualTo(1);
+
+        // b leaves @shared too → no entry references it → realm garbage-collected
+        EntryOptions b2 = entry("b", "b");
+        b2.isolate = Map.of("db", "other");
+        loader.update("b", b2, null);
+        assertThat(loader.realms).doesNotContainKey("shared");
+    }
+
+    @Test
+    void globalRealm_shouldKeepIsolatedNamesInUse() {
+        Context root = Context.create();
+        Loader loader = new Loader(root);
+        loader.mock("a", (ctx, config) -> null);
+        loader.mock("b", (ctx, config) -> null);
+
+        EntryOptions a = entry("a", "a");
+        a.isolate = Map.of("db", "shared", "cache", "shared");
+        loader.create(a, null);
+        EntryOptions b = entry("b", "b");
+        b.isolate = Map.of("cache", "shared");
+        loader.create(b, null);
+
+        // a drops both isolated names; 'cache' stays because b references it
+        EntryOptions a2 = entry("a", "a");
+        a2.isolate = Map.of();
+        loader.update("a", a2, null);
+        assertThat(loader.realms.get("shared").size()).isEqualTo(1);
+
+        // b drops 'cache' too → realm empty and removed
+        EntryOptions b2 = entry("b", "b");
+        b2.isolate = Map.of();
+        loader.update("b", b2, null);
+        assertThat(loader.realms).doesNotContainKey("shared");
+    }
+
+    @Test
+    void loaderLogs_shouldConsumeInternalStatus() {
+        Context root = Context.create();
+        Loader loader = new Loader(root);
+        loader.enableLogs = true;
+        loader.mock("foo", (ctx, config) -> null);
+
+        EntryOptions options = entry("a", "foo");
+        String id = loader.create(options, null);
+        // the initial ACTIVE transition fires before the fiber is linked to its
+        // entry; dispose afterwards so the listener can attribute the transition
+        loader.expectFiber(id).disposeAsync().join();
+
+        // the loader consumed internal/status and logged the unload
+        java.util.List<io.jcordis.core.logger.Message> buffer =
+                root.loggerService().buffer();
+        io.jcordis.core.logger.Message unload = buffer.stream()
+                .filter(m -> "unload".equals(m.args()[1]))
+                .findFirst()
+                .orElseThrow();
+        assertThat(unload.args()[0]).isEqualTo("%s plugin %C");
+        assertThat(unload.args()[2]).isEqualTo("foo");
     }
 
     @Test

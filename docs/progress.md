@@ -834,3 +834,40 @@ Tests run: 172, Failures: 0 -- 总计（新增 1 个测试）
 Reactor: jcordis 9/9 模块 SUCCESS, BUILD SUCCESS
 mvn -Pformat spotless:check -- BUILD SUCCESS（CI 门禁同步）
 ```
+
+---
+
+## 推进：事件消费闭环 + 发布准备（2026-08-27）
+
+### 1. `internal/status` 消费方：Loader 生命周期日志
+
+| 项 | 内容 |
+|---|---|
+| 改动 | `Loader` 构造时监听 `internal/status`：entry fiber 进入 ACTIVE 记 `reload`、离开 ACTIVE 记 `unload`（`enableLogs` 门控，`"%s plugin %C"` 格式）——事件从"仅发射"变为"有消费者" |
+| 测试 | `LoaderBasicTest.loaderLogs_shouldConsumeInternalStatus`（dispose 后断言 buffer 内 "unload" 消息；初始 ACTIVE 转换发生在 setEntry 之前，无法归因条目） |
+
+### 2. `loader/partial-dispose` 消费方：全局 realm GC
+
+| 项 | 内容 |
+|---|---|
+| 改动 | `Loader` 监听 `loader/partial-dispose`（上一轮已发射）：条目离开某个 `@label` 全局 realm 且无其他条目引用时，删除该 realm 的隔离键；realm 空则整体移除（对齐参考 isolate 插件的 partial-dispose 处理器）——isolate 7 步迁移中"realm 生命周期"缺口闭环 |
+| 测试 | `LoaderBasicTest.globalRealm_shouldBeGarbageCollectedWhenUnreferenced` / `globalRealm_shouldKeepIsolatedNamesInUse`（引用保持 + 引用清除两条路径） |
+
+### 3. Maven Central 发布准备
+
+| 项 | 内容 |
+|---|---|
+| `distributionManagement` | S01 OSSRH：snapshot 仓 + staging 仓 |
+| `maven-source-plugin` | 打包时附加 sources jar（pluginManagement + release profile） |
+| `maven-javadoc-plugin` | release profile 附加 javadoc jar（已存在 failOnError=false 配置） |
+| `maven-gpg-plugin` | `release` profile（`-Prelease`）签名全部构件 |
+| 生效方式 | `mvn -Prelease clean deploy`；日常 `mvn clean verify` 完全不受影响（有效 POM 已验证） |
+
+### 验证结果
+
+```
+Tests run: 175, Failures: 0 -- 总计（新增 3 个测试）
+Reactor: jcordis 9/9 模块 SUCCESS, BUILD SUCCESS
+mvn -Pformat spotless:check -- BUILD SUCCESS
+mvn help:effective-pom -Prelease -- 发布配置（sources/javadoc/gpg/ossrh）就位
+```
