@@ -82,6 +82,34 @@ mvn io.jcordis:jcordis-maven-plugin:0.1.0-SNAPSHOT:create-plugin -Dname=demo-plu
 | `examples/config-app` | YAML 配置 + include + group | `mvn -pl examples/config-app test` |
 | `examples/hmr-app` | 配置热重载 + 插件 jar 热替换 | `mvn -pl examples/hmr-app exec:java`（改 `jcordis.yml` / `plugins/` 观察热重载） |
 
+**示例输出**（JDK 21 / Windows）：
+
+```text
+$ mvn -pl examples/hello-world exec:java
+2026-09-02 10:03:12 [I] hello hello world from jcordis
+--- unloading the plugin ---
+2026-09-02 10:03:12 [I] hello goodbye
+
+$ mvn -pl examples/service-graph exec:java
+app connected; database connections = 1
+app fiber state after provider removal = PENDING
+
+$ mvn -pl examples/config-app exec:java
+entries loaded: 3 (feature-a + group + nested-feature)
+
+$ mvn -pl examples/hmr-app exec:java
+[hmr-app] watching ...jcordis.yml (config) and ...plugins (plugin jars)
+[hmr-app] edit jcordis.yml or swap plugins/*.jar to see hot reload
+```
+
+## 并发模型
+
+插件体默认同步执行；异步插件体返回 `CompletableFuture`（如异步 init）。异步体完成时，其产生的 disposable 在 per-fiber **监控锁**（并发模式）下收集，状态转换竞态被收敛为：
+
+- 异步体在 fiber 销毁**之后**完成 → 产生的 disposable **立即处置**，绝不泄漏（对齐 `dispose.spec` 的 `async return 2`）；
+- 销毁后到达的失败被忽略——fiber 保持 `DISPOSED` 而非 `FAILED`；
+- 效应清理在锁内**快照**、锁外**逆序处置**——绝不持锁调用用户回调，disposer 可安全回调 fiber（如 `ctx.effect` / `ctx.get`）。
+
 ## 业务系统集成
 
 一个坐标获得整个运行时框架（core + loader，含已并入其中的 timer / console-exporter / include / group / utils 功能）：
@@ -101,7 +129,8 @@ mvn io.jcordis:jcordis-maven-plugin:0.1.0-SNAPSHOT:create-plugin -Dname=demo-plu
 插件项目产出**干净 jar**：仅包含插件类 + `META-INF/services/io.jcordis.core.registry.Plugin` 清单。
 
 - `mvn verify` 自动执行 `check` goal，校验插件 jar 不混入三方库 / 框架类
-- 运行时由 `PluginClassLoader` 独立加载，支持 jar 变更热替换与完整类卸载（详见[插件热加载设计](docs/hmr-design.md)）
+- 运行时由 `PluginClassLoader` 独立加载，支持 jar 变更热替换与完整类卸载
+- 完整契约见[插件开发指南](docs/plugin-development.md)（英文）与[插件热加载设计](docs/hmr-design.md)（中文）
 
 ## 文档
 
@@ -112,6 +141,8 @@ mvn io.jcordis:jcordis-maven-plugin:0.1.0-SNAPSHOT:create-plugin -Dname=demo-plu
 | [进度记录](docs/progress.md) | 实现里程碑与验证结果 |
 | [设计模式应用](docs/patterns.md) | 23 种 GoF 模式应用清单 |
 | [插件热加载设计](docs/hmr-design.md) | ClassLoader 热替换、卸载语义、依赖模型（传递依赖 + 业务 BOM） |
+| [插件开发指南](docs/plugin-development.md) | 插件契约、打包、隔离、热替换（英文） |
+| [性能基准](docs/perf.md) | 吞吐基线（ns/op）、与 Cordis 对比 |
 | [兼容性对照](docs/compatibility.md) | 与 cordis API 映射 |
 
 ## 构建与测试

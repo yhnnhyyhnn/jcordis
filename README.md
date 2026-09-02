@@ -82,6 +82,26 @@ mvn io.jcordis:jcordis-maven-plugin:0.1.0-SNAPSHOT:create-plugin -Dname=demo-plu
 | `examples/config-app` | YAML config + include + group | `mvn -pl examples/config-app test` |
 | `examples/hmr-app` | config hot reload + plugin jar hot-swap | `mvn -pl examples/hmr-app exec:java` (edit `jcordis.yml` / `plugins/` to watch it reload) |
 
+**Sample output** (JDK 21, Windows):
+
+```text
+$ mvn -pl examples/hello-world exec:java
+2026-09-02 10:03:12 [I] hello hello world from jcordis
+--- unloading the plugin ---
+2026-09-02 10:03:12 [I] hello goodbye
+
+$ mvn -pl examples/service-graph exec:java
+app connected; database connections = 1
+app fiber state after provider removal = PENDING
+
+$ mvn -pl examples/config-app exec:java
+entries loaded: 3 (feature-a + group + nested-feature)
+
+$ mvn -pl examples/hmr-app exec:java
+[hmr-app] watching ...jcordis.yml (config) and ...plugins (plugin jars)
+[hmr-app] edit jcordis.yml or swap plugins/*.jar to see hot reload
+```
+
 ## Concurrency Model
 
 Plugin bodies are synchronous by default; an async body returns a
@@ -117,7 +137,8 @@ Third-party libraries (jackson/slf4j) are not shaded into the aggregate jar; the
 Plugin projects produce a **clean jar**: only plugin classes + a `META-INF/services/io.jcordis.core.registry.Plugin` manifest.
 
 - `mvn verify` automatically runs the `check` goal, verifying that no third-party / framework classes are mixed into the plugin jar
-- At runtime the plugin is loaded in isolation by `PluginClassLoader`, with jar hot-swap and complete class unloading (see the [HMR design doc](docs/hmr-design.md), in Chinese)
+- At runtime the plugin is loaded in isolation by `PluginClassLoader`, with jar hot-swap and complete class unloading
+- Full contract details: see the [plugin development guide](docs/plugin-development.md) (English) and the [HMR design doc](docs/hmr-design.md) (Chinese)
 
 ## Documentation
 
