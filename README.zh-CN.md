@@ -64,13 +64,13 @@ Java 21 实现的 **Cordis** —— 时空可组合性元框架（Meta-Framework
 **创建应用脚手架**（与 CLI 生成物一致）：
 
 ```bash
-mvn io.jcordis:jcordis-maven-plugin:0.1.0-SNAPSHOT:create -Dname=my-app
+mvn io.jcordis:jcordis-maven-plugin:1.0.0:create -Dname=my-app
 ```
 
 **创建插件脚手架**（内嵌插件契约：jcordis 依赖 provided + SPI 清单 + check goal）：
 
 ```bash
-mvn io.jcordis:jcordis-maven-plugin:0.1.0-SNAPSHOT:create-plugin -Dname=demo-plugin
+mvn io.jcordis:jcordis-maven-plugin:1.0.0:create-plugin -Dname=demo-plugin
 ```
 
 ## 示例
@@ -118,7 +118,7 @@ $ mvn -pl examples/hmr-app exec:java
 <dependency>
   <groupId>io.jcordis</groupId>
   <artifactId>jcordis-all</artifactId>
-  <version>0.1.0-SNAPSHOT</version>
+  <version>1.0.0</version>
 </dependency>
 ```
 
