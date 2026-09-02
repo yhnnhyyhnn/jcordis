@@ -20,7 +20,7 @@ jobs:
           java-version: ${{ matrix.java }}
           distribution: temurin
           cache: maven
-      - name: Build with Maven (coverage gate: line and branch thresholds)
+      - name: 'Build with Maven (coverage gate: line and branch thresholds)'
         run: mvn -B -ntp -Pcoverage clean verify
       - name: Enforce formatting (spotless)
         run: mvn -B -ntp -Pformat spotless:check
