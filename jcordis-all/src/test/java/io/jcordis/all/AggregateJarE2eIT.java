@@ -22,7 +22,7 @@ import org.junit.jupiter.api.Test;
  */
 class AggregateJarE2eIT {
 
-    private static final Path JAR = Path.of("target", "jcordis-all-1.0.0.jar");
+    private static final Path JAR = Path.of("target", "jcordis-all-1.0.1-SNAPSHOT.jar");
 
     @Test
     void aggregatedJar_shouldRunLoaderFlowStandalone() throws Exception {
