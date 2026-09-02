@@ -1206,3 +1206,34 @@ Tests run: 205, Failures: 0 -- 总计（PerfBenchmarkTest +5，ConfigAppTest +1�
 Reactor: jcordis 10/10 模块 SUCCESS, BUILD SUCCESS
 mvn -Pformat spotless:check -- BUILD SUCCESS
 ```
+
+---
+
+## 推进：JMH 专业基准 + 覆盖率门禁（2026-08-27）
+
+### 1. JMH 专业基准（第 2 项）
+
+| 项 | 内容 |
+|---|---|
+| 集成 | `jcordis-core` 加 jmh-core/jmh-generator-annprocess（默认 test 依赖，编译基准类）；`benchmark` profile 接线注解处理器 |
+| `JmhBenchmarks` | 5 个 @Benchmark（fiber 创建/事件/effect/服务/格式化），与 PerfBenchmarkTest 镜像 |
+| `JmhRunnerTest` | 程序化 Runner，@Disabled 默认跳过；`mvn -Pbenchmark -pl jcordis-core test -Dtest=JmhRunnerTest` 运行 |
+| 校准数据 | serviceGet 49.9M ops/s、eventEmit(10) 22.3M、effectRegister 6.1M、loggerFormat 1.6M、fiberCreate 86.6K——已入 docs/perf.md（JMH 稳态值显著优于轻量基准，作为相对基线） |
+
+### 2. 覆盖率门禁（第 3 项）
+
+| 项 | 内容 |
+|---|---|
+| `coverage` profile | jacoco 0.8.12：prepare-agent + report + check（LINE ≥80%、BRANCH ≥60%，`coverage.min.*` 属性可调） |
+| 实测 | core LINE 90.1%/BRANCH 77.3%；loader LINE 82.6%/BRANCH 65.7%；cli/maven-plugin/all 通过 |
+| examples 豁免 | 演示模块阈值 0.0（属性覆盖，注释说明）——演示代码不适用门禁 |
+| CI | `ci.yml` 构建命令改为 `mvn -B -ntp -Pcoverage clean verify`（门禁进 CI） |
+
+### 验证结果
+
+```
+Tests run: 206, Failures: 0 -- 总计（含 JmhRunnerTest 1 例 @Disabled 跳过）
+mvn clean verify -- BUILD SUCCESS
+mvn -Pcoverage clean verify -- BUILD SUCCESS（8 模块覆盖检查全过）
+mvn -Pformat spotless:check -- BUILD SUCCESS
+```

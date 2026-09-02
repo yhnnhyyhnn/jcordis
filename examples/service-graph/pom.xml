@@ -7,9 +7,16 @@
   <parent>
     <groupId>io.jcordis</groupId>
     <artifactId>jcordis-parent</artifactId>
+
     <version>0.1.0-SNAPSHOT</version>
     <relativePath>../../pom.xml</relativePath>
   </parent>
+
+  <properties>
+    <!-- examples are demo code: example code: effectively exempt from the coverage gate -->
+    <coverage.min.line>0.0</coverage.min.line>
+    <coverage.min.branch>0.0</coverage.min.branch>
+  </properties>
 
   <artifactId>jcordis-example-service-graph</artifactId>
   <name>jcordis-example-service-graph</name>

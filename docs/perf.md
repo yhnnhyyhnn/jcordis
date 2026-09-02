@@ -15,6 +15,21 @@
 | `service get`（已提供） | 674 | 1.48 |
 | `logger format`（%s/%d 占位符 + 换行截断） | 4 561 | 0.22 |
 
+## JMH 校准数据
+
+**运行**：`mvn -Pbenchmark -pl jcordis-core test -Dtest=JmhRunnerTest`（fork=1，warmup 2×1s，measurement 3×1s）
+
+| 基准 | ops/s | ns/op（约） |
+|---|---|---|
+| `serviceGet` | 49 926 912 | 0.02 |
+| `eventEmitTenListeners` | 22 338 433 | 0.045 |
+| `effectRegisterDispose` | 6 086 670 | 0.16 |
+| `loggerFormat` | 1 562 641 | 0.64 |
+| `fiberCreateAndDispose` | 86 551 | 11.6 |
+
+> JMH 校准值显著优于轻量基准（消除 JIT 预热/分配噪声、状态共享），作为相对基线更可靠。
+> 差异解读：轻量基准包含暖机不足的首次成本；JMH 为稳态吞吐。
+
 ## 解读
 
 - **fiber create + dispose 最重**（~24μs）：包含 uid 分配、依赖解析（checkImpl）、
