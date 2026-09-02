@@ -258,7 +258,7 @@ Impl = { name, fiber, value, check }
 
 ## 3. 加载器（packages/loader）
 
-**@cordisjs/plugin-loader@1.0.1-SNAPSHOT-rc.5** —— 声明式组件加载器，把配置文件变成活的插件树。
+**@cordisjs/plugin-loader@1.0.0-rc.5** —— 声明式组件加载器，把配置文件变成活的插件树。
 
 ### 3.1 模型
 
@@ -329,7 +329,7 @@ export const evaluate = new Function('ctx', 'expr', `with (ctx) { return eval(ex
 
 所有定时器都包在 `ctx.effect()` 里 → **context 销毁时自动 clearTimeout/clearInterval**。`interval(delay)` 无回调形式返回 async iterator，可被 `for await` 消费。
 
-### 4.2 Logger-Console（@cordisjs/plugin-logger-console@1.0.1-SNAPSHOT，26 行）
+### 4.2 Logger-Console（@cordisjs/plugin-logger-console@1.0.0，26 行）
 
 - `ConsoleExporter extends Base`：覆盖 `%o/%O` formatter 为 `node:util.inspect`（深度无限、紧凑模式）。
 - `getDefaults()`：用 `supports-color` 检测终端是否支持 ANSI 颜色（level 0-3）。
@@ -342,7 +342,7 @@ export const evaluate = new Function('ctx', 'expr', `with (ctx) { return eval(ex
 - **原子写入**：`writeFile(filename + '.tmp')` → `rename` 到目标。
 - 文件不存在且有 `initial` 时自动创建；`refresh()` 供 HMR 触发重读。
 
-### 4.4 Group（@cordisjs/plugin-group@1.0.1-SNAPSHOT，3 行）
+### 4.4 Group（@cordisjs/plugin-group@1.0.0，3 行）
 
 仅重导出 loader 的 `Group` 类。
 
@@ -360,7 +360,7 @@ export const evaluate = new Function('ctx', 'expr', `with (ctx) { return eval(ex
 
 **结论：HMR 是 Node 专属能力（操纵 V8 模块系统内部状态），Java 移植不可直接对应，需另行设计（见 Roadmap）。**
 
-### 4.6 Utils（@cordisjs/utils@1.0.1-SNAPSHOT，42 行）
+### 4.6 Utils（@cordisjs/utils@1.0.0，42 行）
 
 `List<T>`：**效应化集合** —— `list.push(v)` 走 `ctx.effect()`，context 销毁时元素自动移除。
 
