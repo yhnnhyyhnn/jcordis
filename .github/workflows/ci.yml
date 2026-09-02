@@ -9,6 +9,8 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    env:
+      CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
     strategy:
       matrix:
         java: [21]
@@ -25,8 +27,12 @@ jobs:
       - name: Enforce formatting (spotless)
         run: mvn -B -ntp -Pformat spotless:check
       - name: Upload coverage to Codecov
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && env.CODECOV_TOKEN != '' }}
         uses: codecov/codecov-action@v4
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
+          files: >-
+            jcordis-core/target/site/jacoco/jacoco.xml,
+            jcordis-loader/target/site/jacoco/jacoco.xml,
+            jcordis-cli/target/site/jacoco/jacoco.xml
           fail_ci_if_error: false
