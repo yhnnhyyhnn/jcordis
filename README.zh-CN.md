@@ -149,4 +149,14 @@ $ mvn -pl examples/hmr-app exec:java
 
 ```bash
 mvn clean verify   # 10/10 模块，206 测试全绿
+mvn -Pcoverage clean verify   # jacoco 覆盖率门禁（LINE >= 80%、BRANCH >= 60%）
+mvn -Pbenchmark -pl jcordis-core test -Dtest=JmhRunnerTest   # JMH 基准
 ```
+
+## 代码覆盖率
+
+- **本地报告**：覆盖率构建后，浏览器打开 `jcordis-core/target/site/jacoco/index.html`（各模块同路径）。
+- **云端仪表盘**（仓库配置 `CODECOV_TOKEN` secret 后 CI 自动上报）：
+  <https://app.codecov.io/github/yhnnhyyhnn/jcordis> —— 逐提交历史、模块/包/类下钻、PR 覆盖率注释。
+
+  token 只存于仓库 secret，绝不写入代码库。

@@ -157,4 +157,19 @@ Plugin projects produce a **clean jar**: only plugin classes + a `META-INF/servi
 
 ```bash
 mvn clean verify   # 10/10 modules, 206 tests green
+mvn -Pcoverage clean verify   # jacoco coverage gate (LINE >= 80%, BRANCH >= 60%)
+mvn -Pbenchmark -pl jcordis-core test -Dtest=JmhRunnerTest   # JMH benchmarks
 ```
+
+## Code Coverage
+
+- **Local report**: after a coverage run, open
+  `jcordis-core/target/site/jacoco/index.html` (and the same path in each
+  module) in a browser.
+- **Cloud dashboard** (CI uploads automatically when the `CODECOV_TOKEN`
+  secret is configured on the repository):
+  <https://app.codecov.io/github/yhnnhyyhnn/jcordis> — per-commit history,
+  module/package/class drill-down and PR coverage comments.
+
+  The upload token lives only in the repository secret — it is never stored
+  in the codebase.
