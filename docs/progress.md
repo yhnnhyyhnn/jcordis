@@ -1237,3 +1237,35 @@ mvn clean verify -- BUILD SUCCESS
 mvn -Pcoverage clean verify -- BUILD SUCCESS（8 模块覆盖检查全过）
 mvn -Pformat spotless:check -- BUILD SUCCESS
 ```
+
+---
+
+## 对照 cordis 9 月更新 + M-C4 spike 验证（2026-09-07）
+
+### 1. EventBus.waterfall next 单次守卫（对齐 cordis 5b195b3）
+
+| 项 | 内容 |
+|---|---|
+| 改动 | `waterfall` 重构为递归 `dispatch`：**每级监听器收到自己的 next（AtomicBoolean 单次守卫）**——重复调用 `next()` 抛 "next() called multiple times"（此前 jcordis 的 next 为共享闭包、可重入链） |
+| 测试 | `EventBusTest.waterfallNext_shouldRejectSecondCall` |
+
+### 2. M-C4 spike：AgentScopeTest（4 例）
+
+验证外部项目（agent 场景）声称的三个缺口是否成立——**结论：均已在 jcordis 内建**：
+
+| 声称缺口 | spike 验证 | 结论 |
+|---|---|---|
+| 无"每子代独立 fiber 公开创建/拆除" | `ctx.plugin()` 每次调用即独立 fiber，`disposeAsync()` 单独拆除（agentA 拆除不影响 agentB） | ✅ 已具备（cordis 的"子 ctx + 新 fiber"折叠为 plugin 调用，Java Plugin 为函数式接口，无需 `ctx.fork()`） |
+| scoped service 回滚需确认 | 每轮 agent 新作用域（plugin fiber）内 provide 两服务 → dispose 后自动消失，4 轮无残留、registry 空 | ✅ 已具备（provide = fiber effect，逆序回滚） |
+| 影子注册需补 | 两 agent `isolate` 同名服务各域可见、互不串扰、A 拆除只清 A | ✅ 已具备（isolate(name, key)） |
+| — | 同作用域重复 provide 抛错（须先拆除或回滚旧注册）——用法约束确认 | ✅ 语义正确 |
+
+**架构结论**：jcordis 无需结构性调整；M-C4 的正确形态是"每 agent 一个 `ctx.plugin()` fiber"（disposeAsync 即拆除、ctx 内 provide 即作用域服务），泄漏源于把服务挂到共享 ctx 而非 agent 的 plugin fiber ctx。
+
+### 验证结果
+
+```
+Tests run: 211, Failures: 0 -- 总计（waterfallNext +1，AgentScopeTest +4）
+Reactor: jcordis 10/10 模块 SUCCESS, BUILD SUCCESS
+mvn -Pformat spotless:check -- BUILD SUCCESS
+```

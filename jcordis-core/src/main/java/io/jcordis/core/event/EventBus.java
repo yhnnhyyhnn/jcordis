@@ -257,16 +257,30 @@ public final class EventBus {
 
     public Object waterfall(Object thisArg, String name, Object[] args, Function<Object[], Object> inner) {
         List<EventHandler> callbacks = new ArrayList<>(resolve("waterfall", name, thisArg, args));
+        return dispatch(callbacks, thisArg, args, inner);
+    }
+
+    /**
+     * Dispatches one waterfall stage. Each listener receives its <em>own</em>
+     * {@code next} guarded so it can only be invoked once — a second call
+     * throws (mirrors Cordis's waterfall continuation guard): a listener that
+     * calls {@code next()} twice would otherwise re-enter the chain.
+     */
+    private Object dispatch(
+            List<EventHandler> callbacks, Object thisArg, Object[] args, Function<Object[], Object> inner) {
+        if (callbacks.isEmpty()) {
+            return inner.apply(args);
+        }
+        EventHandler callback = callbacks.remove(0);
         Object[] chainArgs = Arrays.copyOf(args, args.length + 1);
-        Supplier<Object> next = () -> {
-            if (callbacks.isEmpty()) {
-                return inner.apply(chainArgs);
+        AtomicBoolean called = new AtomicBoolean(false);
+        chainArgs[chainArgs.length - 1] = (Supplier<Object>) () -> {
+            if (!called.compareAndSet(false, true)) {
+                throw new IllegalStateException("next() called multiple times");
             }
-            EventHandler callback = callbacks.remove(0);
-            return callback.invoke(thisArg, chainArgs);
+            return dispatch(callbacks, thisArg, args, inner);
         };
-        chainArgs[chainArgs.length - 1] = next;
-        return next.get();
+        return callback.invoke(thisArg, chainArgs);
     }
 
     static boolean isBailed(Object value) {

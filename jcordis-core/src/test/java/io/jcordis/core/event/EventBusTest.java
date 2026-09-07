@@ -235,6 +235,20 @@ class EventBusTest {
     }
 
     @Test
+    void waterfallNext_shouldRejectSecondCall() {
+        Context root = Context.create();
+        root.on("test/waterfall", (thisArg, args) -> {
+            @SuppressWarnings("unchecked")
+            Supplier<Object> next = (Supplier<Object>) args[1];
+            Object once = next.get(); // continue the chain once
+            assertThatThrownBy(next::get).hasMessageContaining("next() called multiple times");
+            return once;
+        });
+        // the single next() call reaches the tail; the second call was rejected
+        assertThat(root.waterfall("test/waterfall", 1, args -> 2)).isEqualTo(2);
+    }
+
+    @Test
     void waterfall_shouldChainCallbacksAndShortCircuit() {
         Context root = Context.create();
         AtomicInteger cb1 = new AtomicInteger();

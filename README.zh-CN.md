@@ -148,7 +148,7 @@ $ mvn -pl examples/hmr-app exec:java
 ## 构建与测试
 
 ```bash
-mvn clean verify   # 10/10 模块，206 测试全绿
+mvn clean verify   # 10/10 模块，211 测试全绿
 mvn -Pcoverage clean verify   # jacoco 覆盖率门禁（LINE >= 80%、BRANCH >= 60%）
 mvn -Pbenchmark -pl jcordis-core test -Dtest=JmhRunnerTest   # JMH 基准
 ```
