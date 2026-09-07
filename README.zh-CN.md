@@ -1,4 +1,5 @@
-# jcordis
+| [性能基准](docs/perf.md) | 吞吐基线（ns/op）、与 Cordis 对比 |
+| [Agent 作用域指南](docs/agent-scope.md) | 每 agent 作用域用法（ctx.plugin = 可拆除 fiber）、反模式 |# jcordis
 
 <p align="left">
   <a href="README.md">English</a> | 简体中文

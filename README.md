@@ -1,4 +1,5 @@
-# jcordis
+| [Performance benchmark](docs/perf.md) | Throughput baselines (ns/op), comparison vs Cordis |
+| [Agent scope guide](docs/agent-scope.md) | Per-agent scope usage (ctx.plugin = disposable fiber), anti-patterns (Chinese) |# jcordis
 
 <p align="left">
   English | <a href="README.zh-CN.md">简体中文</a>
