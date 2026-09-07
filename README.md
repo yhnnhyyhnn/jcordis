@@ -1,5 +1,3 @@
-| [Performance benchmark](docs/perf.md) | Throughput baselines (ns/op), comparison vs Cordis |
-| [Agent scope guide](docs/agent-scope.md) | Per-agent scope usage (ctx.plugin = disposable fiber), anti-patterns (Chinese) |# jcordis
 
 <p align="left">
   English | <a href="README.zh-CN.md">简体中文</a>
@@ -152,6 +150,7 @@ Plugin projects produce a **clean jar**: only plugin classes + a `META-INF/servi
 | [HMR design](docs/hmr-design.md) | ClassLoader hot-swap, unload semantics, dependency model (Chinese) |
 | [Plugin development](docs/plugin-development.md) | Plugin contract, packaging, isolation, hot reload (English) |
 | [Performance benchmark](docs/perf.md) | Throughput baselines (ns/op), comparison vs Cordis |
+| [Agent scope guide](docs/agent-scope.md) | Per-agent scope usage (ctx.plugin = disposable fiber), anti-patterns (Chinese) |
 | [Compatibility matrix](docs/compatibility.md) | cordis API mapping (Chinese) |
 
 ## Build & Test

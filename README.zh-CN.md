@@ -1,5 +1,3 @@
-| [性能基准](docs/perf.md) | 吞吐基线（ns/op）、与 Cordis 对比 |
-| [Agent 作用域指南](docs/agent-scope.md) | 每 agent 作用域用法（ctx.plugin = 可拆除 fiber）、反模式 |# jcordis
 
 <p align="left">
   <a href="README.md">English</a> | 简体中文
@@ -144,6 +142,7 @@ $ mvn -pl examples/hmr-app exec:java
 | [插件热加载设计](docs/hmr-design.md) | ClassLoader 热替换、卸载语义、依赖模型（传递依赖 + 业务 BOM） |
 | [插件开发指南](docs/plugin-development.md) | 插件契约、打包、隔离、热替换（英文） |
 | [性能基准](docs/perf.md) | 吞吐基线（ns/op）、与 Cordis 对比 |
+| [Agent 作用域指南](docs/agent-scope.md) | 每 agent 作用域用法（ctx.plugin = 可拆除 fiber）、反模式 |
 | [兼容性对照](docs/compatibility.md) | 与 cordis API 映射 |
 
 ## 构建与测试
