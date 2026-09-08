@@ -5,7 +5,7 @@
   <modelVersion>4.0.0</modelVersion>
 
   <parent>
-    <groupId>io.jcordis</groupId>
+    <groupId>io.github.yhnnhyyhnn</groupId>
     <artifactId>jcordis-parent</artifactId>
 
     <version>1.0.1-SNAPSHOT</version>
@@ -24,12 +24,12 @@
 
   <dependencies>
     <dependency>
-      <groupId>io.jcordis</groupId>
+      <groupId>io.github.yhnnhyyhnn</groupId>
       <artifactId>jcordis-core</artifactId>
       <version>${project.version}</version>
     </dependency>
     <dependency>
-      <groupId>io.jcordis</groupId>
+      <groupId>io.github.yhnnhyyhnn</groupId>
       <artifactId>jcordis-loader</artifactId>
       <version>${project.version}</version>
     </dependency>

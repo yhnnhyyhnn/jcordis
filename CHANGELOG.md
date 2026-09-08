@@ -51,9 +51,9 @@
 ## 🚀 快速开始
 
 ```bash
-mvn io.jcordis:jcordis-maven-plugin:1.0.0:create -Dname=my-app
+mvn io.github.yhnnhyyhnn:jcordis-maven-plugin:1.0.0:create -Dname=my-app
 # 或插件项目
-mvn io.jcordis:jcordis-maven-plugin:1.0.0:create-plugin -Dname=demo-plugin
+mvn io.github.yhnnhyyhnn:jcordis-maven-plugin:1.0.0:create-plugin -Dname=demo-plugin
 ```
 
 ## ⚠️ 说明

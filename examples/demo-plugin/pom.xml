@@ -4,7 +4,7 @@
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
   <modelVersion>4.0.0</modelVersion>
 
-  <groupId>io.jcordis.plugins</groupId>
+  <groupId>io.github.yhnnhyyhnn.plugins</groupId>
   <artifactId>demo-plugin</artifactId>
   <version>1.0.1-SNAPSHOT</version>
   <name>demo-plugin</name>
@@ -19,13 +19,13 @@
          Third-party libraries must also be declared scope=provided so the
          produced jar contains only this plugin's own classes. -->
     <dependency>
-      <groupId>io.jcordis</groupId>
+      <groupId>io.github.yhnnhyyhnn</groupId>
       <artifactId>jcordis-core</artifactId>
       <version>1.0.1-SNAPSHOT</version>
       <scope>provided</scope>
     </dependency>
     <dependency>
-      <groupId>io.jcordis</groupId>
+      <groupId>io.github.yhnnhyyhnn</groupId>
       <artifactId>jcordis-loader</artifactId>
       <version>1.0.1-SNAPSHOT</version>
       <scope>provided</scope>
@@ -36,7 +36,7 @@
     <plugins>
       <!-- enforce the clean-jar contract at verify time -->
       <plugin>
-        <groupId>io.jcordis</groupId>
+        <groupId>io.github.yhnnhyyhnn</groupId>
         <artifactId>jcordis-maven-plugin</artifactId>
         <version>1.0.1-SNAPSHOT</version>
         <executions>

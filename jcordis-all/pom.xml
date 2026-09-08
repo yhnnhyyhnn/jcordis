@@ -5,7 +5,7 @@
   <modelVersion>4.0.0</modelVersion>
 
   <parent>
-    <groupId>io.jcordis</groupId>
+    <groupId>io.github.yhnnhyyhnn</groupId>
     <artifactId>jcordis-parent</artifactId>
     <version>1.0.1-SNAPSHOT</version>
   </parent>
@@ -16,17 +16,17 @@
 
   <dependencies>
     <dependency>
-      <groupId>io.jcordis</groupId>
+      <groupId>io.github.yhnnhyyhnn</groupId>
       <artifactId>jcordis-core</artifactId>
       <version>${project.version}</version>
     </dependency>
     <dependency>
-      <groupId>io.jcordis</groupId>
+      <groupId>io.github.yhnnhyyhnn</groupId>
       <artifactId>jcordis-loader</artifactId>
       <version>${project.version}</version>
     </dependency>
     <dependency>
-      <groupId>io.jcordis</groupId>
+      <groupId>io.github.yhnnhyyhnn</groupId>
       <artifactId>jcordis-cli</artifactId>
       <version>${project.version}</version>
     </dependency>
@@ -87,9 +87,9 @@
               <createDependencyReducedPom>true</createDependencyReducedPom>
               <artifactSet>
                 <includes>
-                  <include>io.jcordis:jcordis-core</include>
-                  <include>io.jcordis:jcordis-loader</include>
-                  <include>io.jcordis:jcordis-cli</include>
+                  <include>io.github.yhnnhyyhnn:jcordis-core</include>
+                  <include>io.github.yhnnhyyhnn:jcordis-loader</include>
+                  <include>io.github.yhnnhyyhnn:jcordis-cli</include>
                 </includes>
               </artifactSet>
               <filters>

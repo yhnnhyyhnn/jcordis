@@ -14,7 +14,7 @@ import org.apache.maven.plugins.annotations.Parameter;
  *
  * <p>Facade over {@link Scaffolder}: runs without a project context, so it can
  * be invoked anywhere. Usage:
- * <pre>{@code mvn io.jcordis:jcordis-maven-plugin:create -Dname=my-app [-Dtarget=.]}</pre>
+ * <pre>{@code mvn io.github.yhnnhyyhnn:jcordis-maven-plugin:create -Dname=my-app [-Dtarget=.]}</pre>
  */
 @Mojo(name = "create", requiresProject = false)
 public class CreateMojo extends AbstractMojo {

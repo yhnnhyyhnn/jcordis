@@ -63,13 +63,13 @@ Scaffolding tools ──generate──> Consumers (business apps / examples / pl
 **Create an application scaffold** (identical to the CLI output):
 
 ```bash
-mvn io.jcordis:jcordis-maven-plugin:1.0.1-SNAPSHOT:create -Dname=my-app
+mvn io.github.yhnnhyyhnn:jcordis-maven-plugin:1.0.1-SNAPSHOT:create -Dname=my-app
 ```
 
 **Create a plugin scaffold** (embedded plugin contract: jcordis dependency as provided + SPI manifest + check goal):
 
 ```bash
-mvn io.jcordis:jcordis-maven-plugin:1.0.1-SNAPSHOT:create-plugin -Dname=demo-plugin
+mvn io.github.yhnnhyyhnn:jcordis-maven-plugin:1.0.1-SNAPSHOT:create-plugin -Dname=demo-plugin
 ```
 
 ## Examples

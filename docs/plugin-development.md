@@ -93,7 +93,7 @@ plugin project pom (jcordis + libs = provided)  ──> clean jar
 PluginClassLoader (parent-first)  ──>  host classpath
                                         │ provides everything
                                         ▼
-business system depends on io.jcordis:jcordis-all (one coordinate)
+business system depends on io.github.yhnnhyyhnn:jcordis-all (one coordinate)
 + transitive third-party libs (jackson / slf4j, NOT shaded)
 ```
 

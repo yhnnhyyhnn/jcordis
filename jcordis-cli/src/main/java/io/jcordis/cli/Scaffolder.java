@@ -81,7 +81,7 @@ public final class Scaffolder {
                      xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
               <modelVersion>4.0.0</modelVersion>
 
-              <groupId>io.jcordis.plugins</groupId>
+              <groupId>io.github.yhnnhyyhnn.plugins</groupId>
               <artifactId>{{name}}</artifactId>
               <version>1.0.1-SNAPSHOT</version>
               <name>{{name}}</name>
@@ -96,13 +96,13 @@ public final class Scaffolder {
                      Third-party libraries must also be declared scope=provided so the
                      produced jar contains only this plugin's own classes. -->
                 <dependency>
-                  <groupId>io.jcordis</groupId>
+                  <groupId>io.github.yhnnhyyhnn</groupId>
                   <artifactId>jcordis-core</artifactId>
                   <version>1.0.1-SNAPSHOT</version>
                   <scope>provided</scope>
                 </dependency>
                 <dependency>
-                  <groupId>io.jcordis</groupId>
+                  <groupId>io.github.yhnnhyyhnn</groupId>
                   <artifactId>jcordis-loader</artifactId>
                   <version>1.0.1-SNAPSHOT</version>
                   <scope>provided</scope>
@@ -113,7 +113,7 @@ public final class Scaffolder {
                 <plugins>
                   <!-- enforce the clean-jar contract at verify time -->
                   <plugin>
-                    <groupId>io.jcordis</groupId>
+                    <groupId>io.github.yhnnhyyhnn</groupId>
                     <artifactId>jcordis-maven-plugin</artifactId>
                     <version>1.0.1-SNAPSHOT</version>
                     <executions>
@@ -168,12 +168,12 @@ public final class Scaffolder {
 
               <dependencies>
                 <dependency>
-                  <groupId>io.jcordis</groupId>
+                  <groupId>io.github.yhnnhyyhnn</groupId>
                   <artifactId>jcordis-core</artifactId>
                   <version>1.0.1-SNAPSHOT</version>
                 </dependency>
                 <dependency>
-                  <groupId>io.jcordis</groupId>
+                  <groupId>io.github.yhnnhyyhnn</groupId>
                   <artifactId>jcordis-loader</artifactId>
                   <version>1.0.1-SNAPSHOT</version>
                 </dependency>

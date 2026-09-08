@@ -15,7 +15,7 @@ import org.apache.maven.plugins.annotations.Parameter;
  * manifest, and binds the {@code check} goal to {@code verify}.
  *
  * <p>Facade over {@link Scaffolder#createPlugin}. Usage:
- * <pre>{@code mvn io.jcordis:jcordis-maven-plugin:create-plugin -Dname=demo-plugin}</pre>
+ * <pre>{@code mvn io.github.yhnnhyyhnn:jcordis-maven-plugin:create-plugin -Dname=demo-plugin}</pre>
  */
 @Mojo(name = "create-plugin", requiresProject = false)
 public class CreatePluginMojo extends AbstractMojo {
