@@ -63,13 +63,13 @@ Scaffolding tools ──generate──> Consumers (business apps / examples / pl
 **Create an application scaffold** (identical to the CLI output):
 
 ```bash
-mvn io.github.yhnnhyyhnn:jcordis-maven-plugin:1.0.1-SNAPSHOT:create -Dname=my-app
+mvn io.github.yhnnhyyhnn:jcordis-maven-plugin:1.0.1:create -Dname=my-app
 ```
 
 **Create a plugin scaffold** (embedded plugin contract: jcordis dependency as provided + SPI manifest + check goal):
 
 ```bash
-mvn io.github.yhnnhyyhnn:jcordis-maven-plugin:1.0.1-SNAPSHOT:create-plugin -Dname=demo-plugin
+mvn io.github.yhnnhyyhnn:jcordis-maven-plugin:1.0.1:create-plugin -Dname=demo-plugin
 ```
 
 ## Examples
@@ -125,7 +125,7 @@ One coordinate brings in the whole runtime framework (core + loader, including t
 <dependency>
   <groupId>io.jcordis</groupId>
   <artifactId>jcordis-all</artifactId>
-  <version>1.0.1-SNAPSHOT</version>
+  <version>1.0.1</version>
 </dependency>
 ```
 

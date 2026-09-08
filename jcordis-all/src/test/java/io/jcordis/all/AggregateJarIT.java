@@ -17,7 +17,7 @@ class AggregateJarIT {
 
     @Test
     void aggregatedJar_shouldContainAllModules() throws Exception {
-        Path jar = Path.of("target", "jcordis-all-1.0.1-SNAPSHOT.jar");
+        Path jar = Path.of("target", "jcordis-all-1.0.1.jar");
         assertThat(jar).exists();
 
         String[] expectedClasses = {
@@ -45,7 +45,7 @@ class AggregateJarIT {
 
     @Test
     void aggregatedJar_shouldNotContainThirdPartyClasses() throws Exception {
-        Path jar = Path.of("target", "jcordis-all-1.0.1-SNAPSHOT.jar");
+        Path jar = Path.of("target", "jcordis-all-1.0.1.jar");
         try (JarFile jarFile = new JarFile(jar.toFile())) {
             Enumeration<JarEntry> entries = jarFile.entries();
             while (entries.hasMoreElements()) {

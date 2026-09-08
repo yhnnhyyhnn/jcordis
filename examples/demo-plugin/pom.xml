@@ -6,7 +6,7 @@
 
   <groupId>io.github.yhnnhyyhnn.plugins</groupId>
   <artifactId>demo-plugin</artifactId>
-  <version>1.0.1-SNAPSHOT</version>
+  <version>1.0.1</version>
   <name>demo-plugin</name>
 
   <properties>
@@ -21,13 +21,13 @@
     <dependency>
       <groupId>io.github.yhnnhyyhnn</groupId>
       <artifactId>jcordis-core</artifactId>
-      <version>1.0.1-SNAPSHOT</version>
+      <version>1.0.1</version>
       <scope>provided</scope>
     </dependency>
     <dependency>
       <groupId>io.github.yhnnhyyhnn</groupId>
       <artifactId>jcordis-loader</artifactId>
-      <version>1.0.1-SNAPSHOT</version>
+      <version>1.0.1</version>
       <scope>provided</scope>
     </dependency>
   </dependencies>
@@ -38,7 +38,7 @@
       <plugin>
         <groupId>io.github.yhnnhyyhnn</groupId>
         <artifactId>jcordis-maven-plugin</artifactId>
-        <version>1.0.1-SNAPSHOT</version>
+        <version>1.0.1</version>
         <executions>
           <execution>
             <goals>
