@@ -11,7 +11,7 @@
 
   <name>jcordis</name>
   <description>Java 21 port of Cordis — Meta-Framework of Spatiotemporal Composability</description>
-  <url>https://github.com/jcordis/jcordis</url>
+  <url>https://github.com/yhnnhyyhnn/jcordis</url>
 
   <licenses>
     <license>
@@ -19,6 +19,21 @@
       <url>https://www.apache.org/licenses/LICENSE-2.0.txt</url>
     </license>
   </licenses>
+
+  <developers>
+    <developer>
+      <name>luokai</name>
+      <email>32346908@qq.com</email>
+      <url>https://github.com/yhnnhyyhnn</url>
+    </developer>
+  </developers>
+
+  <scm>
+    <connection>scm:git:https://github.com/yhnnhyyhnn/jcordis.git</connection>
+    <developerConnection>scm:git:ssh://git@github.com/yhnnhyyhnn/jcordis.git</developerConnection>
+    <url>https://github.com/yhnnhyyhnn/jcordis</url>
+    <tag>v1.0.1</tag>
+  </scm>
 
   <modules>
     <module>jcordis-core</module>
@@ -153,8 +168,9 @@
           <artifactId>maven-gpg-plugin</artifactId>
           <version>3.2.7</version>
           <configuration>
+            <keyname>9D5C080B5B9C1B37</keyname>
             <!-- passphrase read from settings.xml server `jcordis-gpg` — never in the pom -->
-            <server>jcordis-gpg</server>
+            <passphraseServerId>jcordis-gpg</passphraseServerId>
           </configuration>
           <executions>
             <execution>
@@ -229,6 +245,13 @@
                 </goals>
               </execution>
             </executions>
+            <configuration>
+              <encoding>UTF-8</encoding>
+              <charset>UTF-8</charset>
+              <docencoding>UTF-8</docencoding>
+              <doclint>none</doclint>
+              <failOnError>false</failOnError>
+            </configuration>
           </plugin>
           <plugin>
             <groupId>org.apache.maven.plugins</groupId>
