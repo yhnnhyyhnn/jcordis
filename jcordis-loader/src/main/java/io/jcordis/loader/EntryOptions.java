@@ -33,6 +33,23 @@ public final class EntryOptions {
     }
 
     /**
+     * Shallow copy of this entry's options (mirrors Cordis's {@code {...options}}),
+     * used as the {@code legacy} side of an {@link EntryChange}.
+     */
+    public EntryOptions copy() {
+        EntryOptions copy = new EntryOptions();
+        copy.id = id;
+        copy.name = name;
+        copy.config = config;
+        copy.group = group;
+        copy.disabled = disabled;
+        copy.inject = inject;
+        copy.intercept = intercept;
+        copy.isolate = isolate;
+        return copy;
+    }
+
+    /**
      * Immutable snapshot of this entry's options (memento pattern).
      *
      * <p>Captured before a mutation, a snapshot can {@link #restore} the

@@ -37,10 +37,14 @@ public final class EntryGroup {
     public void remove(String id) {
         Entry entry = tree.store.get(id);
         if (entry == null) return;
+        // Unregister before disposing: the loader's `internal/plugin` handler
+        // distinguishes "removed by the loader" from "disposed itself" by
+        // checking whether the entry is still in the store (mirrors Cordis's
+        // `EntryGroup.remove`)
+        tree.store.remove(id);
         if (entry.fiber != null) {
             entry.fiber.disposeAsync().join();
         }
-        tree.store.remove(id);
         // mirror Cordis: emit the partial-dispose event (legacy = current options)
         ctx.events().emit((Object) null, "loader/partial-dispose", entry, entry.options, false);
     }

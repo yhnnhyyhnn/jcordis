@@ -36,6 +36,7 @@
 | 异步效应收集 | 完成时收集 disposable；fiber 已销毁则**立即处置**（不泄漏，`async return 2`）；销毁后失败忽略（保持 DISPOSED） | 同参考语义，经 per-fiber Monitor 锁实现 |
 | `hmr.watch(path, callback)`（chokidar 递归监视 + async 回调） | `Hmr.watch(Path, Runnable)`（轮询 `FileTime`，多回调/路径，`ctx.effect` 注销） | Java 无 chokidar；轮询对配置文件场景足够（jar 目录由 `JarWatcher` 的 WatchService 负责） |
 | `Include` 通过 `ctx.hmr.watch(filename, refresh)` 自治重载 | 同（`Include.refresh()` + `Hmr.watch`，同路径去重） | 参考 cacab04e；`Hmr` 注册为 `hmr` 服务供发现 |
+| `EntryTree.commit(EntryChange)` 结构化变更 + `Include` journal 双向同步 | 同：`EntryChange`（id/group/from/options/legacy）+ root tree 监听器 + `Journal`（record/merge/diff/apply/reconcile）；运行时变更（禁用/改配置）写回文件，文件编辑经 reconcile 后**文件优先** | jcordis 的 `Include` 不是独立 `EntryTree` 子树，而是共享 loader 根树，故以“文件拥有的 id/group 内的 id”做归属过滤；**文件外的运行时新建条目不回写**（保守差异） |
 | `inspect(ctx)` → `Context <name>` | `ctx.toString()` | 无 util.inspect |
 | `Service[resolveConfig]`（intercept 链合并 base/head） | `Service.resolveConfig(base, head)` 方法 | Java 方法调用 |
 | `fiber.inject` 合并（entry 级 inject 经 `internal/plugin` 事件注入） | `RegistryService.plugin(ctx, plugin, config, extraInject)` 构造前合并 | Java 无事件钩子时机 |
@@ -56,7 +57,7 @@
 | ANSI 颜色完整格式化 | `%o` inspect、C256 色板、showDiff | ConsoleExporter 基础 ANSI + %s/%d；深度 inspect 未移植 | |
 | `interval(delay)` async iterator | JS AsyncIterable | 未移植（仅回调形态） | |
 | include js-expr YAML 标签 | `!js` 标签 → eval | 未移植（安全决策） | |
-| include 文件热重载 | include.refresh() + watcher | `Hmr` 轮询监听配置变更 | |
+| include 文件热重载 | include.refresh() + watcher + 双向 journal 写回 | 同（`Hmr` 轮询 + `Include` journal 写回）；patch 变更不回写 patch（patch 拥有项的变化不落盘） | |
 | Maven Archetype | | 未做（选方案 A：内嵌模板 CLI） | |
 
 ## 四、已知行为差异

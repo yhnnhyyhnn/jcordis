@@ -256,15 +256,15 @@ public final class Entry {
         Context groupCtx = fiber != null ? fiber.ctx() : ctx;
         if (subgroup == null) {
             EntryTree parentTree = parent != null ? parent.tree : tree;
-            subtree = new EntryTree(groupCtx, parentTree.loader()) {
+            subtree = new EntryTree(groupCtx, parentTree.loader(), parentTree) {
                 @Override
                 public Plugin importPlugin(String name) {
                     return tree.importPlugin(name);
                 }
 
                 @Override
-                public void write() {
-                    tree.write();
+                protected void persist(EntryChange change) {
+                    tree.persist(change);
                 }
             };
             subgroup = subtree.root;

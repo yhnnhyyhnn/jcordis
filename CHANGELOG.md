@@ -6,7 +6,16 @@
 
 - **`Hmr.watch(path, callback)` 通用文件监视**（对齐 cordis `caab04e`）：监视任意路径，同路径可多回调，经 `ctx.effect` 注册（注册方 fiber 销毁自动注销），`isWatching(path)` 查询；`Hmr` 注册为 `hmr` 服务供插件发现
 - **`Include` 自治重载**：`refresh()` 重读配置并重应用；`apply` 时若 `hmr` 服务可用则自注册 `watch(path, refresh)`，配置文件由其自身负责热重载（与便捷 config 模式的注册去重）
+- **loader `commit(EntryChange)` + Include journal 双向同步**（对齐 cordis `c594d1a`）：
+  - `EntryTree.write()` → 结构化 `commit(EntryChange)`（id/group/from/options/legacy）+ 根 tree 监听器；调用点为 `create/remove/update/transfer`、插件自更新 config、插件自禁用
+  - `Include` 将运行时变更记录到 `Journal` 并**写回配置文件**（幂等、原子写、文件被外部修改时先合并）；文件编辑经三方 reconcile 后**文件优先**（冲突告警）
+  - 匿名条目 id 稳定分配（编辑邻居不再重启）；patch 拥有项不落盘；文件外的运行时新建条目不回写（保守差异）
+  - 修正 `internal/plugin` 守卫与 `EntryGroup.remove` 顺序（避免删除/组停止误写 `disabled: true`）
 - **修复：jar 注册表操作并发竞态**（Windows 上 jar 句柄泄漏、临时目录无法删除）——`Loader.loadJar/replaceJar/unload` 串行化：watcher worker 线程与重试池并发调用时 `classLoaders.put` 竞态会导致类加载器被覆盖且从未 `close`
+
+### 测试
+
+- 新增 `EntryChangeTest`（6）、`JournalTest`（14）、`IncludeJournalTest`（6）、`HmrWatchTest`（2）、`IncludeIntegrationTest`（+2）：**215 → 241**
 - `AggregateJarIT/E2eIT` 不再硬编码 jar 版本（surefire/failsafe 注入 `project.version`）
 
 ### 文档

@@ -27,12 +27,12 @@
 
 | 模式 | 位置 | 角色与意图 |
 |---|---|---|
-| **Observer** | `EventBus`（on/once/emit） | 事件发布-订阅：注册/触发/过滤（thisArg + EventFilter） |
+| **Observer** | `EventBus`（on/once/emit）；`EntryTree.addCommitListener`（树变更 → 持久化层，如 `Include` 的 journal 写回） | 事件发布-订阅：注册/触发/过滤（thisArg + EventFilter） |
 | **Chain of Responsibility** | `EventBus.serial/bail/waterfall`、`internal/update` 瀑布链、`Loader` 的 internal 监听 | 链式处理：bailed 短路 / next 传递 |
-| **Template Method** | `EntryTree`（抽象 importPlugin/write）、`Realm`（抽象 suffix） | 骨架固定，子类/匿名类实现变体步骤 |
+| **Template Method** | `EntryTree`（抽象 importPlugin；`commit(EntryChange)` 模板方法 + `persist` 钩子）、`Realm`（抽象 suffix） | 骨架固定，子类/匿名类实现变体步骤 |
 | **Strategy** | `Exporter`（ConsoleExporter 等）、`ConfigParser`（YAML/JSON） | 算法族可互换：渲染策略、解析策略 |
 | **State** | `FiberState` 枚举 + `FiberImpl.transition(old, new)` | 状态机：INACTIVE↔ready 依赖切换触发 reload/unload |
-| **Memento** | `EntryOptions.Snapshot`（snapshot/restore） | 配置快照：更新前捕获，回滚时恢复（HMR/配置更新语义） |
+| **Memento** | `EntryOptions.Snapshot`（snapshot/restore）、`EntryChange.legacy`（变更前选项快照） | 配置快照：更新前捕获，回滚时恢复（HMR/配置更新语义）；legacy 供 journal 计算差集 |
 | **Command** | `Command` / `Command.TreeCommand`（create/update/remove） | 树操作封装为命令对象：与执行机制解耦，可组合/排队 |
 | **Mediator**（隐式） | `Context` 作为中央协调者 | 服务/事件/插件/日志的集中交互点 |
 | **Iterator**（隐式） | `DisposableList`（Iterable）、`EntryTree.entries()` | 集合遍历的统一接口 |

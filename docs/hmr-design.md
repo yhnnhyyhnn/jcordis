@@ -221,6 +221,29 @@ WatchService 监听插件目录（*.jar）
 
 **粒度差异**：cordis 热替换源码文件（改代码即生效）；Java 热替换 jar（改代码需先 `mvn package`）——机制同构，粒度不同，为 Java 生态（OSGi/JPMS/SPI 插件系统）通用做法。
 
+## 7.1 配置文件双向同步（entry journal）
+
+单一监听器解决不了“两边都会变”的问题：文件被编辑、同时插件把自己禁用了。对齐 cordis 的方案是**结构化变更 + journal**：
+
+```
+树侧变更（loader.update / 插件自更新 config / 插件自禁用）
+   → EntryTree.commit(EntryChange{id, group, from, options, legacy})
+   → Include 记录到 Journal（按 id 折叠：create+remove 无痕、连续更新合并）
+   → 写回文件（临时文件 + ATOMIC_MOVE；与当前文件一致则跳过）
+
+文件侧变更（Hmr.watch → Include.refresh）
+   → 重读 + 匿名 id 稳定分配
+   → 三方 reconcile（base=上次读到的文件、theirs=新文件、ours=journal）
+   → 同一键两边都改 → 告警并**文件优先**（journal 丢弃该键）
+   → applyPatches + apply(journal) → loader.read
+```
+
+关键约束：
+
+- `loader.read()` **不**产生 commit（只有编程式变更与插件自更新/自禁用会），因此重读文件不会自我触发写回循环；
+- journal 只回写“文件拥有的条目”（文件内 id，或文件内 group 下的 id）；patch 拥有项不落盘；文件外的运行时新建条目不回写（保守策略）；
+- 写回前对比文件内容，若被外部改写则先回到读路径合并（避免覆盖别人的编辑）。
+
 ## 8. 边界与限制
 
 1. **静态状态丢失**：插件类 `static` 字段在替换后重置（新 ClassLoader 新类）——插件应避免依赖跨替换的静态状态；

@@ -61,8 +61,10 @@ public class Loader extends EntryTree {
                     if (thisArg instanceof Fiber fiber
                             && fiber.entry() instanceof Entry entry
                             && !Boolean.TRUE.equals(noSave)) {
+                        EntryOptions legacy = entry.options.copy();
                         entry.options.config = config;
-                        entry.parent.tree.write();
+                        entry.parent.tree.commit(
+                                EntryChange.updated(entry.options.id, entry.parent, null, entry.options, legacy));
                     }
                     if (args.length > 2 && args[2] instanceof java.util.function.Supplier<?> next) {
                         return next.get();
@@ -76,6 +78,15 @@ public class Loader extends EntryTree {
                 (thisArg, args) -> {
                     Object fiberArg = args.length > 0 ? args[0] : null;
                     if (fiberArg instanceof Fiber fiber && fiber.uid() < 0 && fiber.entry() instanceof Entry entry) {
+                        // mirrors Cordis's `internal/plugin` guards: only a
+                        // self-disposing root fiber of a live, tracked entry
+                        // disables the entry
+                        if (entry.fiber != fiber
+                                || entry.parent == null
+                                || entry.parent.tree.store.get(entry.options.id) != entry
+                                || entry.parent.tree.treeContext().fiber().uid() < 0) {
+                            return null;
+                        }
                         boolean cascaded = false;
                         Entry cursor = entry.parent != null
                                 ? entry.parent.ctx.fiber().entry() instanceof Entry p ? p : null
@@ -91,8 +102,10 @@ public class Loader extends EntryTree {
                                     : null;
                         }
                         if (!cascaded) {
+                            EntryOptions legacy = entry.options.copy();
                             entry.options.disabled = true;
-                            entry.parent.tree.write();
+                            entry.parent.tree.commit(
+                                    EntryChange.updated(entry.options.id, entry.parent, null, entry.options, legacy));
                         }
                     }
                     return null;
@@ -363,8 +376,9 @@ public class Loader extends EntryTree {
     }
 
     @Override
-    public void write() {
-        // in-memory loader: no-op
+    protected void persist(EntryChange change) {
+        // in-memory loader: there is nothing to persist (mirrors Cordis's
+        // `Loader.commit()`, whose root tree lives in memory only)
     }
 
     /**

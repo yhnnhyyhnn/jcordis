@@ -1331,3 +1331,35 @@ Tests run: 215, Failures: 0（HmrWatchTest +2、IncludeIntegrationTest +2）
 Reactor: jcordis 10/10 模块 SUCCESS, BUILD SUCCESS
 mvn -Pformat spotless:check -- BUILD SUCCESS
 ```
+
+## 对照 cordis：loader `commit(EntryChange)` + Include journal（2026-09-11）
+
+对齐 cordis 的双向配置同步（`c594d1a` 一系）：运行时变更不再丢失，文件与 tree 互相不覆盖。
+
+### 结构化变更（对齐 `EntryTree.commit`）
+
+- 新增 `EntryChange`（`id` / `group` / `from` / `options` / `legacy`）：`options == null` = 移除，`legacy == null` = 新建，两者都在 = 更新（`from` 非空表示跨 group 移动）
+- `EntryTree.write()`（无参全量钩子）→ **`commit(EntryChange)`** 模板方法：先跑子类 `persist` 钩子，再通知注册在**根 tree** 上的监听器（group 子树 → 根 tree 的监听器链）
+- 调用点：`EntryTree.create/remove/update/transfer`、Loader 的 `internal/update`（插件自更新 config，legacy 前置快照）、`internal/plugin`（插件自禁用）
+- Loader 的 `persist` 为空（内存树，同 cordis `Loader.commit()`）
+- 补齐 cordis 的 `internal/plugin` 守卫：仅“仍在 store 中 + 是 entry 根 fiber + tree 存活”的自销毁才标记 `disabled`（否则删除/组停止/inject 卸载会误写 `disabled: true` 到文件）；`EntryGroup.remove` 改为**先注销 store 再 dispose**（对齐 cordis 的“loader 移除”判定）
+
+### Include journal（移植 `journal.ts`，~330 行）
+
+- `Journal`：`record`/`mergeRecords`（create+remove 折叠无痕、连续更新合并）、`diff`（仅变化键，清空记 null）、`flatten`/`detach`/`place`、`apply`（含 group 内定位）、`reconcile`（三方合并，**文件优先**并报告冲突）、深度 `equals`
+- `Include`：
+  - `onCommit` 接收结构化变更 → journal → **同步 drain 写回**（幂等：与文件内容一致则不写；文件被外部改动则先重读合并）
+  - 归属过滤：只有“文件拥有的 id / 文件 group 内的 id”写回；patch 拥有项不落盘（`fileOwned`）
+  - 匿名条目 id **稳定分配**：内容+父级匹配复用上次分配的 id，编辑邻居不再重启匿名条目
+  - 原子写（tmp + `ATOMIC_MOVE`）、只读/缺失文件仅警告并保留内存态变更
+  - `pendingChanges()` / `flush()` 诊断与等待接口
+
+### 测试（+26）
+
+`EntryChangeTest`（6）、`JournalTest`（14）、`IncludeJournalTest`（6）：结构化变更语义、journal 折叠/diff/apply/reconcile、运行时 config/disabled 写回、幂等 refresh、匿名 id 稳定、外部条目与 patch 拥有项不写回。
+
+```
+Tests run: 241, Failures: 0（215 → 241）
+Reactor: jcordis 10/10 模块 SUCCESS, BUILD SUCCESS
+mvn -Pformat spotless:check -- BUILD SUCCESS
+```
