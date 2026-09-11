@@ -26,9 +26,15 @@
 - **脚手架依赖版本可配置**：生成的 pom 不再硬编码 SNAPSHOT——默认取脚手架自身构建版本（Maven 资源过滤写入 `jcordis-version.properties`），可用 `-Djcordis.version=<v>`（CLI/Maven 插件 `jcordis.version` 参数）/ `Scaffolder.create(name, target, version)` 覆盖
 - CI：并发测试偶发时序失败增加单次重试（`-Dsurefire.rerunFailingTestsCount=1`），保持信号且不掩盖真实失败
 
-### 测试（journal-app 加入 reactor）
+### 修复
 
-- 新增 `EntryChangeTest`（6）、`JournalTest`（14）、`IncludeJournalTest`（6）、`HmrWatchTest`（3）、`JarPartialReloadTest`（4）、`JournalAppTest`（3）、`IncludeIntegrationTest`（+2）、`ScaffolderTest`（+3）：**215 → 252**
+- **`Journal.flatten` 复制 group 子列表** → `detach`/`place` 作用于副本，group 内的 journal 变更（移动/删除子条目）静默失效。现直接复用 `config` 原列表（仅混合类型列表才过滤复制）
+- **`Include` 的 patch `insert` 未做类型转换** → YAML/JSON 写法的 `patches[].insert`（原始 Map）被强转为 `EntryOptions` 而抛 `ClassCastException`（该写法的 patch 插入完全不可用）。新增 `ConfigParser.convert(Object)` 统一转换（含 group 规范化），`initial` 与 patch `insert` 均走它
+
+### 测试与覆盖率（journal-app 加入 reactor）
+
+- 新增 `EntryChangeTest`（6）、`JournalTest`（14）、`IncludeJournalTest`（6）、`HmrWatchTest`（3）、`JarPartialReloadTest`（4）、`JournalAppTest`（3）、`JournalBranchesTest`（19）、`IncludePatchTest`（10）、`LoaderGuardsTest`（9）、`IncludeIntegrationTest`（+2）、`ScaffolderTest`（+3）：**215 → 290**
+- `jcordis-loader` 覆盖率：LINE 82.7% → **88.4%**、BRANCH 65.4% → **76.9%**（core 保持 90.2% / 77.7%）
 - `AggregateJarIT/E2eIT` 不再硬编码 jar 版本（surefire/failsafe 注入 `project.version`）
 
 ## 1.0.1 — 2026-09-11

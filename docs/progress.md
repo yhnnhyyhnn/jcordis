@@ -1442,3 +1442,33 @@ Tests run: 252, Failures: 0（249 → 252）
 Reactor: jcordis 11/11 模块 SUCCESS, BUILD SUCCESS
 mvn -Pformat spotless:check -- BUILD SUCCESS
 ```
+
+## 覆盖率专项：边界测试 + 两个真实缺陷修复（2026-09-11）
+
+### 结果
+
+| 模块 | LINE | BRANCH |
+|---|---|---|
+| `jcordis-loader` | 82.7% → **88.4%** | 65.4% → **76.9%** |
+| `jcordis-core` | 90.2% | 77.7% |
+
+测试 252 → **290**（`JournalBranchesTest` 19、`IncludePatchTest` 10、`LoaderGuardsTest` 9）。
+
+### 修出的真实缺陷（本轮最大收获）
+
+1. **`Journal.flatten` 复制 group 子列表** → `detach`/`place` 作用于副本，**group 内的 journal 变更（移动/删除子条目）静默失效**。修复：group 的 `config` 若已是纯 `EntryOptions` 列表则直接复用原列表（`childrenOf`），仅混合列表才过滤复制。
+   - 回归测试：`JournalBranchesTest.detachShouldReachIntoGroupChildren`、`applyShouldMoveAnEntryBetweenGroups`
+2. **`Include` 的 patch `insert` 未做类型转换** → YAML/JSON 写法的 `patches[].insert`（原始 Map）被强转为 `EntryOptions`，**patch 插入功能在该写法下抛 `ClassCastException`**。修复：`ConfigParser` 新增 `convert(Object)`（复用 group 规范化），`Include` 的 `initial` 与 patch `insert` 统一走它。
+   - 回归测试：`IncludePatchTest.patchShouldInsertIntoAGroup`、`patchShouldAppendAtTheTopLevelWithoutAnId`
+
+### 边界覆盖范围
+
+- `Journal`：深度比较（Map/List/数组/Number 混型）、`mergeRecords` 的 remove↔create 折叠、`reconcile` 的 removed/created/moved/patch-owned 各分支、`apply` 的 group 缺失告警与回退、`place` 拒绝非 group、`detach` 不存在 id
+- `Include`：patch 全变体（insert 到 group／顶层／非法目标、无 id、未知 id、name 不匹配、override 全部字段）、缺失文件（有/无 initial）、半写坏文件仅告警、匿名 id 跨 parent 重新分配
+- `Loader`：未知名称、重复 `loadJar`、`replaceJar` 首次、无 SPI 的 jar、`resolve`/`resolveGroup` 错误分支、`locate` 上溯与嵌套 id 前缀
+
+```
+Tests run: 290, Failures: 0（252 → 290）
+Reactor: jcordis 11/11 模块 SUCCESS, BUILD SUCCESS
+mvn -Pformat spotless:check -- BUILD SUCCESS
+```

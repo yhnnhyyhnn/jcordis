@@ -25,6 +25,26 @@ public interface ConfigParser {
     }
 
     /**
+     * Converts a raw structure (as read from YAML/JSON, or as it appears in a
+     * patch) into an entry list, normalizing nested group configs. Entries that
+     * are already {@link EntryOptions} pass through unchanged.
+     */
+    default List<EntryOptions> convert(Object raw) {
+        List<EntryOptions> entries = new java.util.ArrayList<>();
+        if (raw instanceof List<?> list) {
+            for (Object item : list) {
+                if (item instanceof EntryOptions options) {
+                    entries.add(options);
+                } else if (item != null) {
+                    entries.add(mapper().convertValue(item, EntryOptions.class));
+                }
+            }
+        }
+        normalizeGroups(entries);
+        return entries;
+    }
+
+    /**
      * Recursively converts group {@code config} lists into {@link EntryOptions}
      * trees: Jackson only knows the top-level element type, so nested group
      * configs come back as raw maps and must be normalized here.

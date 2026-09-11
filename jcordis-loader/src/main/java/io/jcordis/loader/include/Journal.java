@@ -199,13 +199,28 @@ public final class Journal {
                 result.put(options.id, new Flat(parent, position, options, data));
             }
             if (Boolean.TRUE.equals(options.group) && options.config instanceof List<?> nested) {
-                List<EntryOptions> children = new ArrayList<>();
-                for (Object item : nested) {
-                    if (item instanceof EntryOptions child) children.add(child);
-                }
-                flatten(children, options.id, result);
+                flatten(childrenOf(nested), options.id, result);
             }
         }
+    }
+
+    /**
+     * The entry list behind a group's config. The list itself is reused whenever
+     * it already holds entries only, so that {@link #detach} and {@link #place}
+     * mutate the live list instead of a copy (a mixed list — which the config
+     * parser does not produce — is filtered into a fresh one).
+     */
+    private static List<EntryOptions> childrenOf(List<?> nested) {
+        if (nested.isEmpty() || nested.stream().allMatch(EntryOptions.class::isInstance)) {
+            @SuppressWarnings("unchecked")
+            List<EntryOptions> typed = (List<EntryOptions>) nested;
+            return typed;
+        }
+        List<EntryOptions> children = new ArrayList<>();
+        for (Object item : nested) {
+            if (item instanceof EntryOptions child) children.add(child);
+        }
+        return children;
     }
 
     /** Removes an entry (wherever it is nested) from the config list. */

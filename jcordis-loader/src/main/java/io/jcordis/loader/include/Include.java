@@ -69,10 +69,13 @@ public class Include implements Plugin {
     private Snapshot cache;
     private Loader loader;
     private volatile boolean disposed;
+    /** Format strategy for this file (strategy pattern; also converts raw patches). */
+    private final ConfigParser parser;
 
     public Include(Context ctx, Map<String, Object> config) {
         this.path = Paths.get((String) config.get("path"));
-        this.initial = toEntryOptions(config.get("initial"));
+        this.parser = ConfigParser.forPath(path.toString());
+        this.initial = config.get("initial") == null ? null : parser.convert(config.get("initial"));
         this.patches = config.get("patches") instanceof List<?> list ? castMaps(list) : List.of();
     }
 
@@ -352,11 +355,11 @@ public class Include implements Plugin {
     // -------------------------------------------------------------------- file IO
 
     private List<EntryOptions> parse(String content) throws IOException {
-        return ConfigParser.forPath(path.toString()).read(content);
+        return parser.read(content);
     }
 
     private String dump(List<EntryOptions> options) throws IOException {
-        return ConfigParser.forPath(path.toString()).write(options);
+        return parser.write(options);
     }
 
     private void writeText(String content) throws IOException {
@@ -466,7 +469,7 @@ public class Include implements Plugin {
             String name = (String) patch.get("name");
 
             if (insert != null) {
-                List<EntryOptions> inserted = toEntryOptions(insert);
+                List<EntryOptions> inserted = parser.convert(insert);
                 if (id != null) {
                     EntryOptions target = entryMap.get(id);
                     if (target == null || !Boolean.TRUE.equals(target.group)) {
@@ -548,14 +551,5 @@ public class Include implements Plugin {
     @SuppressWarnings("unchecked")
     private static Map<String, Object> castStringMap(Object value) {
         return value instanceof Map<?, ?> map ? (Map<String, Object>) map : null;
-    }
-
-    @SuppressWarnings("unchecked")
-    private static List<EntryOptions> toEntryOptions(Object value) {
-        if (value == null) return null;
-        if (value instanceof List<?> list) {
-            return (List<EntryOptions>) (List<?>) list;
-        }
-        return null;
     }
 }
