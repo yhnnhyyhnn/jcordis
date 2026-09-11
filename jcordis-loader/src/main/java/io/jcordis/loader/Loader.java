@@ -192,7 +192,7 @@ public class Loader extends EntryTree {
      * Loads a plugin from a jar file via SPI discovery and registers it under
      * {@code name}, returning the discovered plugin instance.
      */
-    public Plugin loadJar(Path jar, String name) {
+    public synchronized Plugin loadJar(Path jar, String name) {
         PluginClassLoader previous = classLoaders.get(name);
         if (previous != null) {
             unload(name);
@@ -216,7 +216,7 @@ public class Loader extends EntryTree {
      * class loader is closed. On validation failure the previous plugin is left
      * untouched.
      */
-    public Plugin replaceJar(Path jar, String name) {
+    public synchronized Plugin replaceJar(Path jar, String name) {
         PluginClassLoader previous = classLoaders.get(name);
         PluginClassLoader fresh = new PluginClassLoader(jar, getClass().getClassLoader());
         Plugin plugin;
@@ -260,7 +260,7 @@ public class Loader extends EntryTree {
      * every entry using it, removes it from the registries, and closes its
      * class loader so its classes become collectable.
      */
-    public void unload(String name) {
+    public synchronized void unload(String name) {
         try {
             for (Entry entry : entries()) {
                 if (name.equals(entry.options.name) && entry.fiber != null) {

@@ -83,7 +83,7 @@ public final class Scaffolder {
 
               <groupId>io.github.yhnnhyyhnn.plugins</groupId>
               <artifactId>{{name}}</artifactId>
-              <version>1.0.1</version>
+              <version>1.0.2-SNAPSHOT</version>
               <name>{{name}}</name>
 
               <properties>
@@ -98,13 +98,13 @@ public final class Scaffolder {
                 <dependency>
                   <groupId>io.github.yhnnhyyhnn</groupId>
                   <artifactId>jcordis-core</artifactId>
-                  <version>1.0.1</version>
+                  <version>1.0.2-SNAPSHOT</version>
                   <scope>provided</scope>
                 </dependency>
                 <dependency>
                   <groupId>io.github.yhnnhyyhnn</groupId>
                   <artifactId>jcordis-loader</artifactId>
-                  <version>1.0.1</version>
+                  <version>1.0.2-SNAPSHOT</version>
                   <scope>provided</scope>
                 </dependency>
               </dependencies>
@@ -115,7 +115,7 @@ public final class Scaffolder {
                   <plugin>
                     <groupId>io.github.yhnnhyyhnn</groupId>
                     <artifactId>jcordis-maven-plugin</artifactId>
-                    <version>1.0.1</version>
+                    <version>1.0.2-SNAPSHOT</version>
                     <executions>
                       <execution>
                         <goals>
@@ -158,7 +158,7 @@ public final class Scaffolder {
 
               <groupId>io.jcordis.app</groupId>
               <artifactId>{{name}}</artifactId>
-              <version>1.0.1</version>
+              <version>1.0.2-SNAPSHOT</version>
               <name>{{name}}</name>
 
               <properties>
@@ -170,12 +170,12 @@ public final class Scaffolder {
                 <dependency>
                   <groupId>io.github.yhnnhyyhnn</groupId>
                   <artifactId>jcordis-core</artifactId>
-                  <version>1.0.1</version>
+                  <version>1.0.2-SNAPSHOT</version>
                 </dependency>
                 <dependency>
                   <groupId>io.github.yhnnhyyhnn</groupId>
                   <artifactId>jcordis-loader</artifactId>
-                  <version>1.0.1</version>
+                  <version>1.0.2-SNAPSHOT</version>
                 </dependency>
               </dependencies>
 
