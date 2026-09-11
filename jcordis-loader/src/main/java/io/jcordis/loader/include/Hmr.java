@@ -59,8 +59,13 @@ public final class Hmr implements Runnable {
     private final AtomicBoolean running = new AtomicBoolean(false);
     /** Watched target path → callbacks (a path may have several). */
     private final Map<Path, Set<Runnable>> watchers = new ConcurrentHashMap<>();
-    /** Last observed modification time per watched path (absent = not seen yet). */
-    private final Map<Path, FileTime> lastModified = new ConcurrentHashMap<>();
+    /**
+     * Last observed fingerprint per watched path (absent = not seen yet). A file
+     * fingerprint is its modification time; a directory's covers its whole tree
+     * (relative name + modification time + size), so adding, removing or editing
+     * any contained file counts as a change.
+     */
+    private final Map<Path, Object> lastSeen = new ConcurrentHashMap<>();
 
     /** Written by the polling thread, read by include listeners on app threads. */
     private volatile List<EntryOptions> data;
@@ -78,10 +83,12 @@ public final class Hmr implements Runnable {
     }
 
     /**
-     * Watches one path (file, or directory for entry-level changes) and runs
-     * {@code callback} whenever it changes. Registrations are not exclusive:
-     * several callbacks may watch the same path, and the registration is
-     * removed when its {@code ctx.effect} owner is torn down.
+     * Watches one path and runs {@code callback} whenever it changes. A file is
+     * compared by modification time; a directory by the fingerprint of its whole
+     * tree (so adding, removing or editing any contained file counts).
+     * Registrations are not exclusive: several callbacks may watch the same
+     * path, and the registration is removed when its {@code ctx.effect} owner is
+     * torn down.
      *
      * @return a disposable that unregisters this callback
      */
@@ -91,9 +98,9 @@ public final class Hmr implements Runnable {
                 runner -> {
                     watchers.computeIfAbsent(target, key -> ConcurrentHashMap.newKeySet())
                             .add(callback);
-                    FileTime current = modificationTime(target);
+                    Object current = fingerprint(target);
                     if (current != null) {
-                        lastModified.putIfAbsent(target, current);
+                        lastSeen.putIfAbsent(target, current);
                     }
                     return EffectResult.of(() -> {
                         Set<Runnable> callbacks = watchers.get(target);
@@ -101,7 +108,7 @@ public final class Hmr implements Runnable {
                         callbacks.remove(callback);
                         if (callbacks.isEmpty()) {
                             watchers.remove(target);
-                            lastModified.remove(target);
+                            lastSeen.remove(target);
                         }
                     });
                 },
@@ -158,9 +165,9 @@ public final class Hmr implements Runnable {
     private void check() {
         for (Map.Entry<Path, Set<Runnable>> entry : watchers.entrySet()) {
             Path target = entry.getKey();
-            FileTime current = modificationTime(target);
+            Object current = fingerprint(target);
             if (current == null) continue;
-            FileTime previous = lastModified.put(target, current);
+            Object previous = lastSeen.put(target, current);
             if (current.equals(previous)) continue;
             for (Runnable callback : entry.getValue()) {
                 try {
@@ -199,6 +206,34 @@ public final class Hmr implements Runnable {
     private static FileTime modificationTime(Path path) {
         try {
             return Files.exists(path) ? Files.getLastModifiedTime(path) : null;
+        } catch (IOException e) {
+            return null;
+        }
+    }
+
+    /**
+     * The change fingerprint of a watched path: the modification time for a
+     * file, the sorted {@code relative-path@mtime@size} list of every contained
+     * file for a directory. Returns {@code null} when the path does not exist
+     * (so a missing path is simply skipped, not reported as a change).
+     */
+    private static Object fingerprint(Path path) {
+        try {
+            if (!Files.exists(path)) return null;
+            if (!Files.isDirectory(path)) return modificationTime(path);
+            try (var stream = Files.walk(path)) {
+                return stream.filter(Files::isRegularFile)
+                        .map(file -> {
+                            try {
+                                return path.relativize(file) + "@" + Files.getLastModifiedTime(file) + "@"
+                                        + Files.size(file);
+                            } catch (IOException e) {
+                                return path.relativize(file).toString();
+                            }
+                        })
+                        .sorted()
+                        .toList();
+            }
         } catch (IOException e) {
             return null;
         }

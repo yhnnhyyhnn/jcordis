@@ -28,11 +28,19 @@ public class CreatePluginMojo extends AbstractMojo {
     @Parameter(property = "target", defaultValue = ".")
     private File target;
 
+    /**
+     * The jcordis version the generated plugin targets. Defaults to the version
+     * this plugin was built from.
+     */
+    @Parameter(property = "jcordis.version")
+    private String version;
+
     @Override
     public void execute() throws MojoExecutionException {
         Path dir;
         try {
-            dir = Scaffolder.createPlugin(name, target.toPath());
+            dir = Scaffolder.createPlugin(
+                    name, target.toPath(), version != null ? version : Scaffolder.jcordisVersion());
         } catch (IOException e) {
             throw new MojoExecutionException("failed to scaffold plugin " + name, e);
         }

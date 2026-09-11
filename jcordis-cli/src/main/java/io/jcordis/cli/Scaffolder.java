@@ -1,40 +1,76 @@
 package io.jcordis.cli;
 
 import java.io.IOException;
+import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Properties;
 
 /**
  * Generates a jcordis application scaffold, mirroring {@code create-cordis}.
  *
  * <p>Creates {@code pom.xml}, a {@code jcordis.yml} config, an entry class and
  * a sample plugin under the target directory. All templates are embedded and
- * rendered by placeholder substitution ({@code {{name}}}, {@code {{pkg}}}).
+ * rendered by placeholder substitution ({@code {{name}}}, {@code {{pkg}}},
+ * {@code {{jcordisVersion}}}).
+ *
+ * <p>The generated project depends on the jcordis version the scaffolder itself
+ * was built from (or the {@code jcordis.version} system property / explicit
+ * argument), so a released CLI scaffolds projects against that release instead
+ * of a snapshot.
  */
 public final class Scaffolder {
+
+    private static final String VERSION_RESOURCE = "jcordis-version.properties";
 
     private Scaffolder() {}
 
     /** Creates a new application scaffold in {@code target}/{@code name}. */
     public static Path create(String name, Path target) throws IOException {
+        return create(name, target, jcordisVersion());
+    }
+
+    /** Creates a new application scaffold depending on the given jcordis version. */
+    public static Path create(String name, Path target, String version) throws IOException {
         String pkg = toPackage(name);
         Path dir = target.resolve(name);
         Files.createDirectories(dir);
         Files.createDirectories(dir.resolve("src/main/java").resolve(pkg.replace('.', '/')));
         Files.createDirectories(dir.resolve("src/main/resources"));
 
-        Files.writeString(dir.resolve("pom.xml"), render(POM, name).replace("{{pkg}}", pkg), StandardCharsets.UTF_8);
-        Files.writeString(dir.resolve("jcordis.yml"), render(CONFIG, name), StandardCharsets.UTF_8);
+        Files.writeString(dir.resolve("pom.xml"), render(POM, name, pkg, version), StandardCharsets.UTF_8);
+        Files.writeString(dir.resolve("jcordis.yml"), render(CONFIG, name, pkg, version), StandardCharsets.UTF_8);
         Files.writeString(
                 dir.resolve("src/main/java").resolve(pkg.replace('.', '/')).resolve("Index.java"),
-                render(ENTRY, name).replace("{{pkg}}", pkg),
+                render(ENTRY, name, pkg, version),
                 StandardCharsets.UTF_8);
         Files.writeString(
                 dir.resolve("src/main/java").resolve(pkg.replace('.', '/')).resolve("SamplePlugin.java"),
-                render(SAMPLE, name).replace("{{pkg}}", pkg),
+                render(SAMPLE, name, pkg, version),
                 StandardCharsets.UTF_8);
         return dir;
+    }
+
+    /**
+     * The jcordis version generated projects depend on: the {@code jcordis.version}
+     * system property when set, otherwise the version this build was made from.
+     */
+    public static String jcordisVersion() {
+        String override = System.getProperty("jcordis.version");
+        if (override != null && !override.isBlank()) return override;
+        try (InputStream in = Scaffolder.class.getResourceAsStream(VERSION_RESOURCE)) {
+            if (in != null) {
+                Properties properties = new Properties();
+                properties.load(in);
+                String version = properties.getProperty("version");
+                if (version != null && !version.isBlank()) return version;
+            }
+        } catch (IOException ignored) {
+            // fall through to the implementation version
+        }
+        String implementation = Scaffolder.class.getPackage().getImplementationVersion();
+        return implementation != null ? implementation : "1.0.2-SNAPSHOT";
     }
 
     /** Converts a project name into a Java package ({@code my-app} → {@code my.app}). */
@@ -42,25 +78,28 @@ public final class Scaffolder {
         return name.toLowerCase().replaceAll("[^a-z0-9.]+", ".");
     }
 
-    /**
-     * Creates a new plugin project in {@code target}/{@code name}. The
+    /** Creates a new plugin project in {@code target}/{@code name}. The
      * generated pom embeds the plugin contract: jcordis dependencies are
      * {@code provided} (the host supplies the framework), the jar stays clean
      * (plugin classes plus an SPI manifest), and the {@code check} goal is
      * bound to {@code verify}.
      */
     public static Path createPlugin(String name, Path target) throws IOException {
+        return createPlugin(name, target, jcordisVersion());
+    }
+
+    /** Creates a new plugin project depending on the given jcordis version. */
+    public static Path createPlugin(String name, Path target, String version) throws IOException {
         String pkg = toPackage(name);
         Path dir = target.resolve(name);
         Files.createDirectories(dir);
         Files.createDirectories(dir.resolve("src/main/java").resolve(pkg.replace('.', '/')));
         Files.createDirectories(dir.resolve("src/main/resources/META-INF/services"));
 
-        Files.writeString(
-                dir.resolve("pom.xml"), render(PLUGIN_POM, name).replace("{{pkg}}", pkg), StandardCharsets.UTF_8);
+        Files.writeString(dir.resolve("pom.xml"), render(PLUGIN_POM, name, pkg, version), StandardCharsets.UTF_8);
         Files.writeString(
                 dir.resolve("src/main/java").resolve(pkg.replace('.', '/')).resolve("SamplePlugin.java"),
-                render(PLUGIN_SAMPLE, name).replace("{{pkg}}", pkg),
+                render(PLUGIN_SAMPLE, name, pkg, version),
                 StandardCharsets.UTF_8);
         Files.writeString(
                 dir.resolve("src/main/resources/META-INF/services/io.jcordis.core.registry.Plugin"),
@@ -69,8 +108,8 @@ public final class Scaffolder {
         return dir;
     }
 
-    private static String render(String template, String name) {
-        return template.replace("{{name}}", name);
+    private static String render(String template, String name, String pkg, String version) {
+        return template.replace("{{name}}", name).replace("{{pkg}}", pkg).replace("{{jcordisVersion}}", version);
     }
 
     private static final String PLUGIN_POM =
@@ -83,7 +122,7 @@ public final class Scaffolder {
 
               <groupId>io.github.yhnnhyyhnn.plugins</groupId>
               <artifactId>{{name}}</artifactId>
-              <version>1.0.2-SNAPSHOT</version>
+              <version>{{jcordisVersion}}</version>
               <name>{{name}}</name>
 
               <properties>
@@ -98,13 +137,13 @@ public final class Scaffolder {
                 <dependency>
                   <groupId>io.github.yhnnhyyhnn</groupId>
                   <artifactId>jcordis-core</artifactId>
-                  <version>1.0.2-SNAPSHOT</version>
+                  <version>{{jcordisVersion}}</version>
                   <scope>provided</scope>
                 </dependency>
                 <dependency>
                   <groupId>io.github.yhnnhyyhnn</groupId>
                   <artifactId>jcordis-loader</artifactId>
-                  <version>1.0.2-SNAPSHOT</version>
+                  <version>{{jcordisVersion}}</version>
                   <scope>provided</scope>
                 </dependency>
               </dependencies>
@@ -115,7 +154,7 @@ public final class Scaffolder {
                   <plugin>
                     <groupId>io.github.yhnnhyyhnn</groupId>
                     <artifactId>jcordis-maven-plugin</artifactId>
-                    <version>1.0.2-SNAPSHOT</version>
+                    <version>{{jcordisVersion}}</version>
                     <executions>
                       <execution>
                         <goals>
@@ -158,7 +197,7 @@ public final class Scaffolder {
 
               <groupId>io.jcordis.app</groupId>
               <artifactId>{{name}}</artifactId>
-              <version>1.0.2-SNAPSHOT</version>
+              <version>{{jcordisVersion}}</version>
               <name>{{name}}</name>
 
               <properties>
@@ -170,12 +209,12 @@ public final class Scaffolder {
                 <dependency>
                   <groupId>io.github.yhnnhyyhnn</groupId>
                   <artifactId>jcordis-core</artifactId>
-                  <version>1.0.2-SNAPSHOT</version>
+                  <version>{{jcordisVersion}}</version>
                 </dependency>
                 <dependency>
                   <groupId>io.github.yhnnhyyhnn</groupId>
                   <artifactId>jcordis-loader</artifactId>
-                  <version>1.0.2-SNAPSHOT</version>
+                  <version>{{jcordisVersion}}</version>
                 </dependency>
               </dependencies>
 

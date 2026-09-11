@@ -1363,3 +1363,28 @@ Tests run: 241, Failures: 0（215 → 241）
 Reactor: jcordis 10/10 模块 SUCCESS, BUILD SUCCESS
 mvn -Pformat spotless:check -- BUILD SUCCESS
 ```
+
+## 收尾增强：目录监视 + 脚手架版本 + CI 重试（2026-09-11）
+
+### B2. `Hmr.watch` 支持目录（指纹比对）
+
+- 文件路径 → `FileTime` 比对（原行为）；**目录路径 → 整棵树指纹**（相对名 + mtime + size 列表），目录内新增/修改/删除文件均触发回调
+- `lastModified: Map<Path, FileTime>` → `lastSeen: Map<Path, Object>`（统一指纹）；缺失路径跳过（不误报变更）
+- 测试：`HmrWatchTest.watch_shouldObserveChangesInsideDirectories`（新增/编辑/删除三态）
+
+### D3. 脚手架依赖版本可配置
+
+- 模板硬编码 `1.0.2-SNAPSHOT` → `{{jcordisVersion}}` 占位符
+- 默认版本来自 `jcordis-version.properties`（Maven 资源过滤 `${project.version}`，随 CLI/插件构建固化），回退到 manifest `Implementation-Version`
+- 覆盖入口：`-Djcordis.version=<v>`（CLI 系统属性 / Mojo `jcordis.version` 参数）/ `Scaffolder.create|createPlugin(name, target, version)`
+- 效果：发布版 CLI 生成的项目依赖**该发布版**而非 SNAPSHOT；使用方可显式指定（如 `1.0.1`）
+
+### C3. CI 并发测试重试
+
+- `mvn -Pcoverage clean verify -Dsurefire.rerunFailingTestsCount=1 -Dfailsafe.rerunFailingTestsCount=1`：共享 runner 上时序敏感测试的偶发失败单次重试（报告为 Flakes，不掩盖真实失败）
+
+```
+Tests run: 245, Failures: 0（241 → 245：HmrWatchTest 2→3、ScaffolderTest 7→10）
+Reactor: jcordis 10/10 模块 SUCCESS, BUILD SUCCESS
+mvn -Pformat spotless:check -- BUILD SUCCESS
+```

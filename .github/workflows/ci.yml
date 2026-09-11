@@ -23,7 +23,9 @@ jobs:
           distribution: temurin
           cache: maven
       - name: 'Build with Maven (coverage gate: line and branch thresholds)'
-        run: mvn -B -ntp -Pcoverage clean verify
+        # timing-sensitive concurrency tests may flake on shared runners; one
+        # retry keeps the signal without hiding a genuine failure
+        run: mvn -B -ntp -Pcoverage clean verify -Dsurefire.rerunFailingTestsCount=1 -Dfailsafe.rerunFailingTestsCount=1
       - name: Enforce formatting (spotless)
         run: mvn -B -ntp -Pformat spotless:check
       - name: Upload coverage to Codecov

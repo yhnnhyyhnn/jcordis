@@ -43,6 +43,41 @@ class ScaffolderTest {
     }
 
     @Test
+    void generatedProjectTargetsGivenVersion() throws IOException {
+        Path dir = Scaffolder.create("ver-app", tempDir, "9.9.9");
+
+        String pom = Files.readString(dir.resolve("pom.xml"));
+        assertThat(pom).contains("<version>9.9.9</version>");
+        assertThat(pom).doesNotContain("{{jcordisVersion}}");
+
+        Path plugin = Scaffolder.createPlugin("ver-plugin", tempDir, "9.9.9");
+        assertThat(Files.readString(plugin.resolve("pom.xml")))
+                .contains("<version>9.9.9</version>")
+                .doesNotContain("{{jcordisVersion}}");
+    }
+
+    @Test
+    void jcordisVersionShouldResolveToAConcreteVersion() {
+        // populated by Maven resource filtering; falls back to the manifest
+        assertThat(Scaffolder.jcordisVersion()).isNotBlank().doesNotContain("${");
+    }
+
+    @Test
+    void jcordisVersionShouldHonourTheSystemPropertyOverride() {
+        String previous = System.getProperty("jcordis.version");
+        try {
+            System.setProperty("jcordis.version", "4.5.6");
+            assertThat(Scaffolder.jcordisVersion()).isEqualTo("4.5.6");
+        } finally {
+            if (previous == null) {
+                System.clearProperty("jcordis.version");
+            } else {
+                System.setProperty("jcordis.version", previous);
+            }
+        }
+    }
+
+    @Test
     void convertsNameToPackage() {
         assertThat(Scaffolder.toPackage("my-app")).isEqualTo("my.app");
         assertThat(Scaffolder.toPackage("HelloWorld")).isEqualTo("helloworld");

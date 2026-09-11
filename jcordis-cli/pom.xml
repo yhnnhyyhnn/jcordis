@@ -37,4 +37,24 @@
       <scope>test</scope>
     </dependency>
   </dependencies>
+
+  <build>
+    <resources>
+      <!-- the scaffolded project's default jcordis version is this build's -->
+      <resource>
+        <directory>src/main/resources</directory>
+        <filtering>true</filtering>
+        <includes>
+          <include>io/jcordis/cli/jcordis-version.properties</include>
+        </includes>
+      </resource>
+      <resource>
+        <directory>src/main/resources</directory>
+        <filtering>false</filtering>
+        <excludes>
+          <exclude>io/jcordis/cli/jcordis-version.properties</exclude>
+        </excludes>
+      </resource>
+    </resources>
+  </build>
 </project>

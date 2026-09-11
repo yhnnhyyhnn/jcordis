@@ -88,4 +88,38 @@ class HmrWatchTest {
             hmr.stop();
         }
     }
+
+    @Test
+    void watch_shouldObserveChangesInsideDirectories() throws Exception {
+        Path dir = tempDir.resolve("watched-dir");
+        Files.createDirectories(dir);
+        Files.writeString(dir.resolve("a.txt"), "one", StandardCharsets.UTF_8);
+
+        Context root = Context.create();
+        Loader loader = new Loader(root);
+        Hmr hmr = new Hmr(root, loader, Map.of("interval", 30));
+        hmr.start();
+        AtomicInteger calls = new AtomicInteger();
+        hmr.watch(dir, calls::incrementAndGet);
+        try {
+            Thread.sleep(150);
+            assertThat(calls).as("no change yet").hasValue(0);
+
+            // a new file inside the directory counts as a change
+            Files.writeString(dir.resolve("b.txt"), "new", StandardCharsets.UTF_8);
+            waitFor(() -> calls.get() >= 1);
+
+            // so does editing an existing one
+            int settled = calls.get();
+            Files.writeString(dir.resolve("a.txt"), "two", StandardCharsets.UTF_8);
+            waitFor(() -> calls.get() > settled);
+
+            // and removing one
+            int afterEdit = calls.get();
+            Files.delete(dir.resolve("b.txt"));
+            waitFor(() -> calls.get() > afterEdit);
+        } finally {
+            hmr.stop();
+        }
+    }
 }

@@ -4,7 +4,7 @@
 
 ### HMR / Loader
 
-- **`Hmr.watch(path, callback)` 通用文件监视**（对齐 cordis `caab04e`）：监视任意路径，同路径可多回调，经 `ctx.effect` 注册（注册方 fiber 销毁自动注销），`isWatching(path)` 查询；`Hmr` 注册为 `hmr` 服务供插件发现
+- **`Hmr.watch(path, callback)` 通用文件监视**（对齐 cordis `caab04e`）：监视任意路径（文件按 mtime；**目录按整棵树的指纹**，增删改任一文件均触发），同路径可多回调，经 `ctx.effect` 注册（注册方 fiber 销毁自动注销），`isWatching(path)` 查询；`Hmr` 注册为 `hmr` 服务供插件发现
 - **`Include` 自治重载**：`refresh()` 重读配置并重应用；`apply` 时若 `hmr` 服务可用则自注册 `watch(path, refresh)`，配置文件由其自身负责热重载（与便捷 config 模式的注册去重）
 - **loader `commit(EntryChange)` + Include journal 双向同步**（对齐 cordis `c594d1a`）：
   - `EntryTree.write()` → 结构化 `commit(EntryChange)`（id/group/from/options/legacy）+ 根 tree 监听器；调用点为 `create/remove/update/transfer`、插件自更新 config、插件自禁用
@@ -13,9 +13,14 @@
   - 修正 `internal/plugin` 守卫与 `EntryGroup.remove` 顺序（避免删除/组停止误写 `disabled: true`）
 - **修复：jar 注册表操作并发竞态**（Windows 上 jar 句柄泄漏、临时目录无法删除）——`Loader.loadJar/replaceJar/unload` 串行化：watcher worker 线程与重试池并发调用时 `classLoaders.put` 竞态会导致类加载器被覆盖且从未 `close`
 
+### 工具链
+
+- **脚手架依赖版本可配置**：生成的 pom 不再硬编码 SNAPSHOT——默认取脚手架自身构建版本（Maven 资源过滤写入 `jcordis-version.properties`），可用 `-Djcordis.version=<v>`（CLI/Maven 插件 `jcordis.version` 参数）/ `Scaffolder.create(name, target, version)` 覆盖
+- CI：并发测试偶发时序失败增加单次重试（`-Dsurefire.rerunFailingTestsCount=1`），保持信号且不掩盖真实失败
+
 ### 测试
 
-- 新增 `EntryChangeTest`（6）、`JournalTest`（14）、`IncludeJournalTest`（6）、`HmrWatchTest`（2）、`IncludeIntegrationTest`（+2）：**215 → 241**
+- 新增 `EntryChangeTest`（6）、`JournalTest`（14）、`IncludeJournalTest`（6）、`HmrWatchTest`（3）、`IncludeIntegrationTest`（+2）、`ScaffolderTest`（+3）：**215 → 245**
 - `AggregateJarIT/E2eIT` 不再硬编码 jar 版本（surefire/failsafe 注入 `project.version`）
 
 ### 文档
