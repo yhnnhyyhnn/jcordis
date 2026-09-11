@@ -197,12 +197,15 @@ jcordis 模块 pom（自身依赖带版本）
 WatchService 监听插件目录（*.jar）
    → SHA-256 指纹变更检测（mtime+size 不可靠）
    → 命中已加载插件（name ↔ jar 映射）
-   → 原子替换流程：
-     1. 新 PluginClassLoader 加载新 jar，SPI 实例化新 Plugin
-     2. 失败 → 记录日志，保留旧 ClassLoader（回滚，对应 cordis rollback）
-     3. 成功 → modules 注册表 swap（旧 Plugin 实例摘除）
-     4. 相关 entry 树 diff 重载：dispose 旧 fiber → 以新 Plugin 实例重建
-     5. 旧 PluginClassLoader 延迟 close（待旧 fiber 完全 dispose）
+   → 原子替换流程（三阶段，对齐 cordis `partialReload`）：
+     Stage 1 验证：新 PluginClassLoader 加载 + SPI 实例化（全有或全无）
+                  失败 → 关闭新加载器，旧插件与运行中的 fiber 完全未动
+     Stage 2 卸载：本轮命中的每个 entry 先全部 dispose（不交错重建），
+                  使阶段 3 的“祖先”判定可决定；dispose 前 drain 该 fiber
+                  进行中的异步初始化（per-fiber drain）
+     Stage 3 重载：逐 entry 重建；祖先也在本轮时跳过（由祖先的 group
+                  初始化级联重建，避免双实例）；失败隔离（不回滚，保持
+                  失败状态，下次变更重试）；旧 PluginClassLoader 必关
 ```
 
 - 与配置变更并行：配置重载（现有）+ jar 热替换（新增）互不干扰；
@@ -216,7 +219,7 @@ WatchService 监听插件目录（*.jar）
 | 清 ESM/CJS loadCache | 丢弃旧 PluginClassLoader |
 | 重新 import 模块 | 新 PluginClassLoader + SPI 实例化 |
 | 依赖图 accepted/declined 分类 | 不需要——jar 为原子变更单元 |
-| registry.delete + 重建 fiber | unload + entry 树 diff 重载 |
+| registry.delete + 重建 fiber | unload + 按 entry 部分重建（三阶段：validate / unload / reload） |
 | 失败回滚（缓存恢复） | 新加载失败则保留旧 ClassLoader |
 
 **粒度差异**：cordis 热替换源码文件（改代码即生效）；Java 热替换 jar（改代码需先 `mvn package`）——机制同构，粒度不同，为 Java 生态（OSGi/JPMS/SPI 插件系统）通用做法。

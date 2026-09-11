@@ -1388,3 +1388,27 @@ Tests run: 245, Failures: 0（241 → 245：HmrWatchTest 2→3、ScaffolderTest 
 Reactor: jcordis 10/10 模块 SUCCESS, BUILD SUCCESS
 mvn -Pformat spotless:check -- BUILD SUCCESS
 ```
+
+## 对照 cordis：jar 热替换三阶段部分重载（2026-09-11）
+
+对齐 cordis `b280b6c` 的 `partialReload`（validate → unload → reload）：jcordis 的重载单元是 **jar**（非 ESM 模块图），故不做 accepted/declined 依赖图分析，其余三阶段语义完整落地。
+
+### `Loader.replaceJar` 三阶段
+
+| 阶段 | 行为 | 对齐点 |
+|---|---|---|
+| **1. 验证** | 新 `PluginClassLoader` 加载 + SPI 实例化，**全程未触碰任何 entry**；失败关闭新加载器并抛出 | cordis stage 1「all-or-nothing」+ rollback |
+| **2. 卸载** | 本轮命中的每个 entry **先全部 dispose**（收集 stale，不交错重建）；dispose 前 `drain(fiber)` 等待进行中的异步初始化（per-fiber drain） | cordis stage 2「先删完再重建，使祖先判定可决定」 |
+| **3. 重载** | 逐 entry 重建；**祖先也在本轮则跳过**（由祖先 group 初始化级联重建，避免双实例）；**失败隔离**（逐 entry try/catch，无回滚，下次变更重试）；旧加载器在 finally 必关 | cordis stage 3「per-fiber、hasInactiveAncestor 过滤、无 rollback」 |
+
+差异说明：jcordis 中 group 条目由内置 `@cordisjs/plugin-group` 承载，故「祖先同批」分支实为防御性（第三方容器插件复用 group 机制时可达）；cordis 的 fiber 树与 entry 树可不同构，该分支是活路径。
+
+### 测试（+4）
+
+`JarPartialReloadTest`：兄弟条目全部重建 / 阶段 1 失败不动运行 fiber / **失败条目隔离**（`FailingPlugin` fixture）/ **初始化进行中热替换 drain**（`AsyncPlugin` fixture）。
+
+```
+Tests run: 249, Failures: 0（245 → 249）
+Reactor: jcordis 10/10 模块 SUCCESS, BUILD SUCCESS
+mvn -Pformat spotless:check -- BUILD SUCCESS
+```

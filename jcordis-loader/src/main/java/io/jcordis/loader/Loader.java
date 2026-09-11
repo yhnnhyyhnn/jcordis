@@ -10,8 +10,10 @@ import java.io.IOException;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.jar.JarEntry;
 import java.util.jar.JarFile;
@@ -224,16 +226,32 @@ public class Loader extends EntryTree {
 
     /**
      * Atomically replaces the plugin registered under {@code name} with a fresh
-     * load of {@code jar}: the new class loader is validated first, then the
-     * registry is swapped, matching entries are reloaded, and the previous
-     * class loader is closed. On validation failure the previous plugin is left
-     * untouched.
+     * load of {@code jar}, in three stages (mirrors Cordis's
+     * {@code partialReload}):
+     *
+     * <ol>
+     *   <li><b>validate</b> — load and instantiate the new class loader before
+     *       anything is touched, so a broken jar leaves the old plugin and every
+     *       running fiber untouched (all-or-nothing);
+     *   <li><b>unload</b> — dispose every matching entry's fiber first, with no
+     *       rebuild interleaved. Completing all disposals up front is what makes
+     *       the ancestor check in stage 3 decidable;
+     *   <li><b>reload</b> — rebuild one entry at a time. Entries whose ancestor is
+     *       also being reloaded are skipped: that ancestor's group
+     *       initialization rebuilds its descendants (mirrors Cordis's
+     *       {@code hasInactiveAncestor} filter, which avoids building two
+     *       instances). A failure is isolated to its entry and left failed — the
+     *       next change retries it, exactly as on a cold start (no rollback).
+     * </ol>
+     *
+     * <p>The previous class loader is always closed, even when a reload throws.
      */
     public synchronized Plugin replaceJar(Path jar, String name) {
         PluginClassLoader previous = classLoaders.get(name);
         PluginClassLoader fresh = new PluginClassLoader(jar, getClass().getClassLoader());
         Plugin plugin;
         try {
+            // stage 1: validate before touching any entry
             plugin = discover(fresh, jar);
         } catch (RuntimeException | Error e) {
             closeQuietly(fresh);
@@ -242,21 +260,33 @@ public class Loader extends EntryTree {
         classLoaders.put(name, fresh);
         modules.put(name, plugin);
         try {
-            java.util.Set<Entry> reloaded = new java.util.HashSet<>();
+            // stage 2: unload every matching entry first
+            List<Entry> stale = new java.util.ArrayList<>();
             for (Entry entry : entries()) {
                 if (name.equals(entry.options.name) && entry.fiber != null) {
+                    // wait for in-flight asynchronous initialization before
+                    // tearing the fiber down (the per-fiber drain)
+                    drain(entry.fiber);
                     entry.fiber.disposeAsync().join();
                     entry.fiber = null;
                     entry.loaded = false;
-                    reloaded.add(entry);
+                    stale.add(entry);
                 }
             }
-            // disposing a fiber marks its entry disabled (self-dispose
-            // semantics); a hot replace must clear that side effect before
-            // reloading
-            for (Entry entry : reloaded) {
-                entry.options.disabled = null;
-                entry.refresh();
+            // stage 3: rebuild per entry, skipping descendants of a stale ancestor
+            for (Entry entry : stale) {
+                if (hasStaleAncestor(entry, stale)) continue;
+                try {
+                    // disposing a fiber marks its entry disabled (self-dispose
+                    // semantics); a hot replace must clear that side effect
+                    entry.options.disabled = null;
+                    entry.refresh();
+                } catch (Throwable error) {
+                    // no rollback: a plugin that fails to load stays failed and
+                    // keeps its parent and config, so the next change retries it
+                    ctx.logger("loader")
+                            .warn("failed to reload entry " + entry.options.id + " after jar change: " + error);
+                }
             }
         } finally {
             // even if entry teardown/reload throws, the previous class loader
@@ -266,6 +296,37 @@ public class Loader extends EntryTree {
             }
         }
         return plugin;
+    }
+
+    /** Waits for a fiber's in-flight asynchronous initialization, if any. */
+    private static void drain(Fiber fiber) {
+        CompletableFuture<?> task = fiber.inertia();
+        if (task == null) return;
+        try {
+            task.join();
+        } catch (RuntimeException ignored) {
+            // a failed body is handled by the fiber's own failure path
+        }
+    }
+
+    /**
+     * Whether an ancestor entry is also being reloaded in this batch: such a
+     * descendant is rebuilt by that ancestor's group initialization, so
+     * rebuilding it here as well would produce two instances.
+     */
+    private static boolean hasStaleAncestor(Entry entry, List<Entry> stale) {
+        Entry cursor = ancestor(entry);
+        while (cursor != null) {
+            if (stale.contains(cursor)) return true;
+            cursor = ancestor(cursor);
+        }
+        return false;
+    }
+
+    private static Entry ancestor(Entry entry) {
+        if (entry.parent == null || entry.parent.ctx.fiber() == null) return null;
+        Object parent = entry.parent.ctx.fiber().entry();
+        return parent instanceof Entry parentEntry ? parentEntry : null;
     }
 
     /**
