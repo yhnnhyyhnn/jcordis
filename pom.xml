@@ -271,9 +271,16 @@
             </executions>
           </plugin>
           <!-- Central Portal publishing (official 2024+ route): replaces the
-               legacy OSSRH staging flow. Uploads signed artifacts and
-               auto-publishes once Central's checks pass. Credentials come from
-               settings.xml server `central` (token auth). -->
+               legacy OSSRH staging flow. Uploads signed artifacts to the
+               Central Portal, then Central runs its validation checks.
+               Credentials come from settings.xml server `central` (user token
+               as username/password) — there is no `tokenAuth` parameter in
+               0.6.0.
+
+               NOTE: 0.6.0 has no command-line `publish` goal and its
+               `autoPublish` did not trigger in practice — a deployment ends up
+               `validated` and must be published manually from the Portal
+               (Publishing → Deployments). See docs/releasing.md. -->
           <plugin>
             <groupId>org.sonatype.central</groupId>
             <artifactId>central-publishing-maven-plugin</artifactId>
@@ -281,7 +288,10 @@
             <extensions>true</extensions>
             <configuration>
               <publishingServerId>central</publishingServerId>
-              <tokenAuth>true</tokenAuth>
+              <!-- wait for Central's validation result before the build ends,
+                   so failures surface immediately -->
+              <waitUntil>validated</waitUntil>
+              <!-- best effort: may still require a manual Publish in the Portal -->
               <autoPublish>true</autoPublish>
             </configuration>
           </plugin>

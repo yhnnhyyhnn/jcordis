@@ -152,6 +152,7 @@ Plugin projects produce a **clean jar**: only plugin classes + a `META-INF/servi
 | [Performance benchmark](docs/perf.md) | Throughput baselines (ns/op), comparison vs Cordis |
 | [Agent scope guide](docs/agent-scope.md) | Per-agent scope usage (ctx.plugin = disposable fiber), anti-patterns (Chinese) |
 | [Compatibility matrix](docs/compatibility.md) | cordis API mapping (Chinese) |
+| [Release guide](docs/releasing.md) | Maven Central publishing procedure, constraints, troubleshooting (Chinese) |
 
 ## Build & Test
 

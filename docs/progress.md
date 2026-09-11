@@ -1269,3 +1269,65 @@ Tests run: 211, Failures: 0 -- 总计（waterfallNext +1，AgentScopeTest +4）
 Reactor: jcordis 10/10 模块 SUCCESS, BUILD SUCCESS
 mvn -Pformat spotless:check -- BUILD SUCCESS
 ```
+
+## 1.0.1 发布至 Maven Central（2026-09-11）
+
+**首个 Central 正式版本**：`io.github.yhnnhyyhnn:jcordis-*:1.0.1`。
+
+### 发布结果
+
+| 工件 | 状态 |
+|---|---|
+| `jcordis-parent:1.0.1` | ✅ published（手动 Publish） |
+| `jcordis-core` / `jcordis-loader` / `jcordis-cli` / `jcordis-maven-plugin` | ✅ published |
+| `jcordis-all` | ✅ validated → 手动 Publish（新增标记类解决 sources/javadoc 校验） |
+
+### 关键约束（发布踩坑记录）
+
+1. **命名空间**：`io.github.<user>` 经 GitHub 账号自动验证，无需自有域名（`io.jcordis` 需 `jcordis.io` DNS 验证，不可行）
+2. **GPG 签名**：全部工件（含 pom）需签名；passphrase 经 `settings.xml` 的 `jcordis-gpg` server 注入
+3. **parent 先行**：Central 校验器解析子模块 pom 时需 parent 已可见，否则报 "Project URL is not defined / License information is missing / SCM URL is not defined / Developers information is missing"
+4. **依赖版本显式**：所有依赖（含 test scope）需有版本——BOM 管理的 junit/assertj 依赖 parent 的 `dependencyManagement`，故 parent 必须先发布
+5. **空源码模块**：`jcordis-all` 需标记类（`JcordisAll`）才能产出 sources/javadoc jar
+6. **`autoPublish` 不生效**：`central-publishing-maven-plugin:0.6.0` 无命令行 publish goal，实测上传后停在 `validated`，**须在 Central Portal 网页手动 Publish**；`tokenAuth` 不是 0.6.0 的参数（构建告警），已移除
+7. **发布命令**：`mvn -Prelease deploy -pl :jcordis-core ... -Dhttp.proxyHost=127.0.0.1 -Dhttp.proxyPort=7890`（逐模块；parent 用 `-N`）
+
+### 附带修复
+
+- `EventBus.waterfall` 递归派发 + 每级 `next` 单次守卫（对齐 cordis `5b195b3`）
+- CI workflow 名称字符修正；Codecov 接入（无 token 时跳过上传）
+
+---
+
+## 对照 cordis 4.0.0-rc.10（2026-09-11）
+
+参考 `c594d1a..f8ea3cd`（2 提交），实施 A+B+C：
+
+### A. `Hmr.watch()` 通用文件监视（对齐 `caab04e`）
+
+- `watch(Path, Runnable)` → `Disposable`：路径规范化、同路径多回调（Set）、`ctx.effect` 注册（fiber 销毁自动注销）、`isWatching(Path)` 查询
+- `Hmr` 构造时 `ctx.provide("hmr", this)`：插件可发现（非门控，无 Hmr 时 Include 照常工作）
+- 监视实现：轮询 `FileTime` 精确比较（跨平台；jar 目录由 `JarWatcher` 的 WatchService 负责）；变更时先跑全部 watchers 回调
+- 便捷 config 模式（`path` 选项）保留，且与 `watch` 注册**去重**（双向 `isWatching` 检查）
+
+### B. `Include` 自治重载（对齐 cordis 插件自注册）
+
+- `Include.refresh()`：重读配置文件 → `applyPatches` → `loader.read`
+- `apply` 时若 hmr 服务可用则注册 `hmr.watch(path, this::refresh)`——配置文件由 Include 自身负责热重载，HMR 不再硬编码遍历 loader entries 找 include
+
+### C. 文档
+
+- `docs/compatibility.md`：对齐基线 `rc.9 → rc.10`，补 `hmr.watch()` 实现差异行
+- README 双语 HMR 能力描述
+
+### 并发缺陷根治
+
+`Loader.loadJar/replaceJar/unload` 加 `synchronized`：watcher worker 线程与重试池并发调用时 `classLoaders.put` 竞态 → 类加载器被覆盖且从未 `close` → **jar 句柄泄漏**（Windows 上 `@TempDir` 删除失败，测试 flaky）。连续 8 轮并发测试验证稳定。
+
+### 验证结果
+
+```
+Tests run: 215, Failures: 0（HmrWatchTest +2、IncludeIntegrationTest +2）
+Reactor: jcordis 10/10 模块 SUCCESS, BUILD SUCCESS
+mvn -Pformat spotless:check -- BUILD SUCCESS
+```

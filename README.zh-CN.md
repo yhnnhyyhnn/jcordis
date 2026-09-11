@@ -144,6 +144,7 @@ $ mvn -pl examples/hmr-app exec:java
 | [性能基准](docs/perf.md) | 吞吐基线（ns/op）、与 Cordis 对比 |
 | [Agent 作用域指南](docs/agent-scope.md) | 每 agent 作用域用法（ctx.plugin = 可拆除 fiber）、反模式 |
 | [兼容性对照](docs/compatibility.md) | 与 cordis API 映射 |
+| [发布手册](docs/releasing.md) | Maven Central 发布流程、校验约束、故障排查 |
 
 ## 构建与测试
 
