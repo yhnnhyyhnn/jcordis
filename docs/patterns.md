@@ -35,7 +35,7 @@
 | **Memento** | `EntryOptions.Snapshot`（snapshot/restore）、`EntryChange.legacy`（变更前选项快照） | 配置快照：更新前捕获，回滚时恢复（HMR/配置更新语义）；legacy 供 journal 计算差集 |
 | **Command** | `Command` / `Command.TreeCommand`（create/update/remove） | 树操作封装为命令对象：与执行机制解耦，可组合/排队 |
 | **Mediator**（隐式） | `Context` 作为中央协调者 | 服务/事件/插件/日志的集中交互点 |
-| **Iterator**（隐式） | `DisposableList`（Iterable）、`EntryTree.entries()` | 集合遍历的统一接口 |
+| **Iterator**（隐式） | `EffectList`（Iterable 惰性视图）、`EntryTree.entries()` | 集合遍历的统一接口 |
 | **Factory Method**（隐式） | `EffectResult.of(...)`、`Disposable.noop()`、`EventOptions.of(...)` | 语义化工厂 |
 | **Adapter**（隐式） | `Plugin.constructor(Class)` / `Plugin.object(...)` | 类/对象适配为统一 `Plugin` 接口；`TimerService.Timer`（Runnable + dispose 组合） |
 | **Proxy**（隐式） | `PluginClassLoader`（URLClassLoader 子类）、`TimerService.scheduler()` 懒加载 | 间接层：jar 隔离类加载代理；惰性资源代理 |

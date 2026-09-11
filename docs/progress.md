@@ -1472,3 +1472,35 @@ Tests run: 290, Failures: 0（252 → 290）
 Reactor: jcordis 11/11 模块 SUCCESS, BUILD SUCCESS
 mvn -Pformat spotless:check -- BUILD SUCCESS
 ```
+
+## core 覆盖率专项（2026-09-11）
+
+### 结果
+
+| 模块 | LINE | BRANCH |
+|---|---|---|
+| `jcordis-core` | 90.2% → **95.8%** | 77.7% → **88.9%** |
+| `jcordis-loader`（上一轮） | 88.4% | 76.9% |
+
+测试 290 → **337**（`LoggerFormatTest` 11、`LoggerServiceEdgeTest` 6、`ConsoleExporterEdgeTest` 6、`TimerEdgeTest` 9、`PluginFactoryTest` 6、`EventBusEdgeTest` 9）。
+
+### 修出的真实缺陷 + 清理
+
+1. **`Logger.format` 用 `List.of(args)` → 任一 null 参数即 NPE**：`logger.info("value: %s", null)` 会抛 `NullPointerException`（列表不允许 null 元素）。改为 `Arrays.asList` 包装后可容纳 null（null 是合法的日志值）。
+   - 回归测试：`LoggerFormatTest.missingArgumentsShouldRenderAsNull`、`trailingArgumentsShouldBeAppended`
+2. **删除死代码 `util/DisposableList`**（68 行）：自模块重组后无任何生产/测试引用（effect 收集由 `FiberImpl` 的 `List<Disposable>` + Monitor 锁实现；`EffectList` 保留，它有独立测试且被文档引用）。`docs/patterns.md` 的 Iterator 条目改指 `EffectList`。
+
+### 覆盖范围
+
+- `Logger`：全部占位符策略（s/d/i/f/o/O/c/C、`%%`、未知占位）、参数缺失/多余（含 null）、Throwable 首参、非 String 首参、多行 + maxLength 截断、颜色深度（0/1/2、16 色 vs 256 色、decoration）、调色板选择
+- `LoggerService`：级别阈值（默认 / per-name / `default`）、`AggregateError` 展开、缓冲区裁剪（含 size=0 的全量裁剪分支）
+- `ConsoleExporter`：时间戳开关、label 宽度填充、时间差、任意 type 前缀、默认配置注册
+- `TimerService`：`close()` 幂等与关闭后重建调度器、已触发/待触发 timeout 的处置、future timeout 在 fiber 拆卸时异常完成、throttle（noTrailing / 窗口后再触发 / dispose 取消尾调用）、debounce 在 dispose 后不调度、interval dispose 后停止
+- `Plugin`：构造器选择顺序（两参 → 一参 → 无参/私有）、`Initializable` 钩子、按 class 缓存、无可用构造器的错误路径
+- `EventBus`：serial 的异步监听器与 bail 短路、异常传播与 `CompletionException` 展开、parallel 异步/失败、空监听器集合（serial/parallel/bail）、`Boolean.FALSE` 不短路、`internal/dispatch` 钩子不递归
+
+```
+Tests run: 337, Failures: 0（290 → 337）
+Reactor: jcordis 11/11 模块 SUCCESS, BUILD SUCCESS
+mvn -Pformat spotless:check -- BUILD SUCCESS
+```

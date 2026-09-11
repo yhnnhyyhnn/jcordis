@@ -168,7 +168,7 @@ Plugin projects produce a **clean jar**: only plugin classes + a `META-INF/servi
 ## Build & Test
 
 ```bash
-mvn clean verify   # 11/11 modules, 290 tests green
+mvn clean verify   # 11/11 modules, 337 tests green
 mvn -Pcoverage clean verify   # jacoco coverage gate (LINE >= 80%, BRANCH >= 60%)
 mvn -Pbenchmark -pl jcordis-core test -Dtest=JmhRunnerTest   # JMH benchmarks
 ```

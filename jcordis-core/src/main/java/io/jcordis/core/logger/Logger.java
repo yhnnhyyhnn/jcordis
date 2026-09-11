@@ -63,7 +63,9 @@ public final class Logger {
     /** Formats a message's args with {@code %s}/{@code %d}/{@code %o} placeholders. */
     public static String format(Exporter exporter, Message message) {
         Object[] args = message.args();
-        java.util.List<Object> remaining = new java.util.ArrayList<>(java.util.List.of(args));
+        // Arrays.asList (not List.of) so that null arguments are accepted: a
+        // null is a legitimate value to log, and List.of would throw
+        java.util.List<Object> remaining = new java.util.ArrayList<>(java.util.Arrays.asList(args));
         Object first = remaining.isEmpty() ? null : remaining.get(0);
         if (first instanceof Throwable error) {
             remaining.set(0, error.getMessage());

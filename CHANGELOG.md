@@ -28,13 +28,15 @@
 
 ### 修复
 
+- **`Logger.format` 遇到 null 参数抛 NPE**：内部用 `List.of(args)`，而 `List.of` 不允许 null 元素——`logger.info("value: %s", null)` 直接崩溃。改为 `Arrays.asList` 包装（null 是合法的日志值）
 - **`Journal.flatten` 复制 group 子列表** → `detach`/`place` 作用于副本，group 内的 journal 变更（移动/删除子条目）静默失效。现直接复用 `config` 原列表（仅混合类型列表才过滤复制）
 - **`Include` 的 patch `insert` 未做类型转换** → YAML/JSON 写法的 `patches[].insert`（原始 Map）被强转为 `EntryOptions` 而抛 `ClassCastException`（该写法的 patch 插入完全不可用）。新增 `ConfigParser.convert(Object)` 统一转换（含 group 规范化），`initial` 与 patch `insert` 均走它
+- **删除死代码 `util/DisposableList`**（68 行）：模块重组后无任何引用（effect 收集由 `FiberImpl` 的 `List<Disposable>` + Monitor 锁实现）；`EffectList` 保留（有独立测试与文档引用）
 
 ### 测试与覆盖率（journal-app 加入 reactor）
 
-- 新增 `EntryChangeTest`（6）、`JournalTest`（14）、`IncludeJournalTest`（6）、`HmrWatchTest`（3）、`JarPartialReloadTest`（4）、`JournalAppTest`（3）、`JournalBranchesTest`（19）、`IncludePatchTest`（10）、`LoaderGuardsTest`（9）、`IncludeIntegrationTest`（+2）、`ScaffolderTest`（+3）：**215 → 290**
-- `jcordis-loader` 覆盖率：LINE 82.7% → **88.4%**、BRANCH 65.4% → **76.9%**（core 保持 90.2% / 77.7%）
+- 新增 `EntryChangeTest`（6）、`JournalTest`（14）、`IncludeJournalTest`（6）、`HmrWatchTest`（3）、`JarPartialReloadTest`（4）、`JournalAppTest`（3）、`JournalBranchesTest`（19）、`IncludePatchTest`（10）、`LoaderGuardsTest`（9）、`LoggerFormatTest`（11）、`LoggerServiceEdgeTest`（6）、`ConsoleExporterEdgeTest`（6）、`TimerEdgeTest`（9）、`PluginFactoryTest`（6）、`EventBusEdgeTest`（9）、`IncludeIntegrationTest`（+2）、`ScaffolderTest`（+3）：**215 → 337**
+- 覆盖率：`jcordis-loader` LINE 82.7% → **88.4%**、BRANCH 65.4% → **76.9%**；`jcordis-core` LINE 90.2% → **95.8%**、BRANCH 77.7% → **88.9%**
 - `AggregateJarIT/E2eIT` 不再硬编码 jar 版本（surefire/failsafe 注入 `project.version`）
 
 ## 1.0.1 — 2026-09-11
