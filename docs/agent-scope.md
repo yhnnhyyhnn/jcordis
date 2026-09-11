@@ -4,6 +4,22 @@
 > "每个 agent 一个可独立拆除的作用域"的架构结论，含能力确认、
 > 推荐用法与反模式。验证测试：`AgentScopeTest`（jcordis-core，4 例）。
 
+## 依赖坐标
+
+jcordis **1.0.1 已发布到 Maven Central**（命名空间 `io.github.yhnnhyyhnn`）：
+
+```xml
+<dependency>
+  <groupId>io.github.yhnnhyyhnn</groupId>
+  <artifactId>jcordis-core</artifactId>   <!-- 或 jcordis-loader / jcordis-cli / jcordis-all -->
+  <version>1.0.1</version>
+</dependency>
+```
+
+- `jcordis-all`：聚合（shaded）包，含 core + loader + cli，适合直接跑应用；
+- 本地仓库/离线：先 `mvn install`（开发版为 `1.0.2-SNAPSHOT`）；
+- 版本选择：文档中的 `hmr.watch()`、`Include` 双向配置同步等能力见 `docs/compatibility.md`。
+
 ## 背景：M-C4 的需求
 
 majo 需要为每个 agent scope 提供：
@@ -94,3 +110,11 @@ jcordis（继承 cordis 的"ctx=作用域、plugin=fiber、effect=回滚"模型�
 M-C4 全部需求。majo 侧的工作是**迁移用法**（每 agent 一个 `ctx.plugin()` fiber），
 而非等待 jcordis 提供新能力。若后续觉得"每 agent 写 Plugin 包装"不顺手，
 可提出糖方法 `ctx.scope(Runnable)`（≈1 方法 + 测试，随 1.1.0-SNAPSHOT 发布）。
+
+## 相关能力（1.0.1 起可用）
+
+| 能力 | 用途 |
+|---|---|
+| `Hmr.watch(path, callback)` | 监视任意文件/目录（目录按整棵树指纹）；回调注册在 `ctx.effect` 上，agent fiber 销毁自动注销 |
+| `Include` 双向配置同步 | agent 配置文件的运行时变更（禁用、改配置）写回文件；文件编辑经 reconcile 后文件优先 |
+| `EntryTree.commit(EntryChange)` | 自定义持久化层：监听树变更（`addCommitListener`）实现自己的配置仓库 |
