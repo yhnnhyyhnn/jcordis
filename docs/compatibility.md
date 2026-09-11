@@ -1,6 +1,8 @@
 # jcordis 与 Cordis 行为差异对照表
 
 > 本文档明确 jcordis 对 Cordis（TypeScript）移植过程中的**保留、修改、裁剪**，是行为对齐的权威参考。
+>
+> **对齐基线**：cordis `4.0.0-rc.10`（含 loader `commit(EntryChange)`、`hmr.watch()` 等 2026-09 变更）
 
 ## 一、完全保留（语义等价）
 
@@ -32,6 +34,8 @@
 | JS 原型链上下文继承 | 显式 parent 链接 + extend() 复制 map | 规避原型链 |
 | `Promise`/`async` 插件体 | `CompletableFuture`（同步插件体 + 可选异步 init） | Java 并发模型 |
 | 异步效应收集 | 完成时收集 disposable；fiber 已销毁则**立即处置**（不泄漏，`async return 2`）；销毁后失败忽略（保持 DISPOSED） | 同参考语义，经 per-fiber Monitor 锁实现 |
+| `hmr.watch(path, callback)`（chokidar 递归监视 + async 回调） | `Hmr.watch(Path, Runnable)`（轮询 `FileTime`，多回调/路径，`ctx.effect` 注销） | Java 无 chokidar；轮询对配置文件场景足够（jar 目录由 `JarWatcher` 的 WatchService 负责） |
+| `Include` 通过 `ctx.hmr.watch(filename, refresh)` 自治重载 | 同（`Include.refresh()` + `Hmr.watch`，同路径去重） | 参考 cacab04e；`Hmr` 注册为 `hmr` 服务供发现 |
 | `inspect(ctx)` → `Context <name>` | `ctx.toString()` | 无 util.inspect |
 | `Service[resolveConfig]`（intercept 链合并 base/head） | `Service.resolveConfig(base, head)` 方法 | Java 方法调用 |
 | `fiber.inject` 合并（entry 级 inject 经 `internal/plugin` 事件注入） | `RegistryService.plugin(ctx, plugin, config, extraInject)` 构造前合并 | Java 无事件钩子时机 |
@@ -43,7 +47,7 @@
 | 功能 | Cordis 机制 | jcordis 状态 | 说明 |
 |---|---|---|---|
 | 动态模块加载 | Node ESM `import()` + ModuleLoader | SPI 注册表（builtins/modules） | `Loader.importPlugin(name)` 查表；动态编译列为增强项 |
-| HMR 插件源码热重载 | V8 模块缓存清除 + re-import | 仅配置文件变更 → 树 diff 重载（`Hmr`） | Java 无法动态重编译类 |
+| HMR 插件源码热重载 | V8 模块缓存清除 + re-import | 仅文件变更回调 → 树 diff 重载（`Hmr.watch()` + 便捷 config 重载） | Java 无法动态重编译类 |
 | 配置表达式求值 | `with(ctx){eval()}` | **纯数据插值**（方案 A） | 安全决策：不执行任意表达式，预留 Evaluator 接口 |
 | isolate Realm 完整语义 | LocalRealm/GlobalRealm 7 步切换 + 服务 impl 迁移 | LocalRealm/GlobalRealm + realm GC（partial-dispose 消费）+ **isolate 变更走插件重启**（副作用重执行，非 impl 原地迁移）；服务 impl 原地迁移未实现 | 参考用 prototype 原地交换，jcordis 为不可变 ctx 拷贝模型 |
 | `internal/get`/`internal/set` 瀑布 | 完整 waterfall 链 | ✅ 已实现（见第一节；尾端语义与参考一致） | 2026-08 对齐修正 |

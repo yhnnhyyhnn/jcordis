@@ -75,7 +75,28 @@ public class Include implements Plugin {
         }
         List<EntryOptions> merged = applyPatches(new ArrayList<>(data));
         loader.read(merged);
+        // if the hmr service is available, let this include own its config file:
+        // the file is re-read and re-applied on change (mirrors Cordis's
+        // `ctx.hmr.watch(filename, refresh)`); registrations are de-duplicated
+        Object hmr = ctx.get("hmr");
+        if (hmr instanceof Hmr instance && !instance.isWatching(path)) {
+            instance.watch(path, this::refresh);
+        }
         return (io.jcordis.core.util.Disposable) () -> loader.ctx().registry().delete(this);
+    }
+
+    /**
+     * Re-reads the config file and re-applies the parsed tree, mirroring
+     * Cordis's {@code Include.refresh()}. Registered as an hmr watch when the
+     * service is available, and callable directly.
+     */
+    public void refresh() {
+        try {
+            data = read();
+        } catch (IOException e) {
+            throw new IllegalStateException("cannot read config file: " + path, e);
+        }
+        loader.read(applyPatches(new ArrayList<>(data)));
     }
 
     private List<EntryOptions> read() throws IOException {
