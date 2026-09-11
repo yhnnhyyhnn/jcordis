@@ -1412,3 +1412,33 @@ Tests run: 249, Failures: 0（245 → 249）
 Reactor: jcordis 10/10 模块 SUCCESS, BUILD SUCCESS
 mvn -Pformat spotless:check -- BUILD SUCCESS
 ```
+
+## 示例增强：journal-app 双向同步 + 示例可移植性（2026-09-11）
+
+### 新增 `examples/journal-app`（第 11 个模块）
+
+演示 `Include` journal 的三个方向（可运行 + 端到端可测）：
+
+```
+$ mvn -pl examples/journal-app exec:java
+loaded from app.yml: world
+--- 1. a runtime change is written back to the file   → app.yml now holds: "runtime"
+--- 2. editing the file reaches the tree             → plugin reloaded with: from-file
+--- 3. conflicting edit: the file wins               → [E] config conflict …; file wins
+```
+
+- 运行时从 classpath 模板复制到 `target/journal-app.yml` 后运行（`-Djournal.config` 可覆盖），不依赖工作目录、不修改仓库文件
+- `JournalApp.run(loader, config)` 可被测试直接驱动；`JournalAppTest` 3 例覆盖三个方向
+- `GreeterPlugin` 从（被持久化的）config 读取问候语，重启后仍生效
+
+### 顺带修复
+
+- `examples/config-app`：同样改为从 classpath 模板复制（原先依赖 `src/main/resources/app.yml` 相对路径，从仓库根运行会 `NoSuchFileException`）
+- README / `docs/hmr-design.md` 遗留的旧坐标 `io.jcordis` → `io.github.yhnnhyyhnn`（版本 1.0.1）
+- README 模块数与测试数更新（11/11 模块、252 测试）
+
+```
+Tests run: 252, Failures: 0（249 → 252）
+Reactor: jcordis 11/11 模块 SUCCESS, BUILD SUCCESS
+mvn -Pformat spotless:check -- BUILD SUCCESS
+```

@@ -150,7 +150,7 @@ jcordis 模块 pom（自身依赖带版本）
 </dependencyManagement>
 
 <!-- jcordis 模块与三方库一律 provided：编译可见、运行时宿主提供、不打入 jar -->
-<dependency><groupId>io.jcordis</groupId><artifactId>jcordis-core</artifactId><version>0.1.0</version><scope>provided</scope></dependency>
+<dependency><groupId>io.github.yhnnhyyhnn</groupId><artifactId>jcordis-core</artifactId><version>1.0.1</version><scope>provided</scope></dependency>
 <dependency><groupId>com.fasterxml.jackson.core</groupId><artifactId>jackson-databind</artifactId><scope>provided</scope></dependency>
 ```
 

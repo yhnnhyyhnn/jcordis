@@ -1,0 +1,8 @@
+# journal-app example: the include plugin owns this file.
+# Runtime changes (a plugin disabling itself, a config update) are written back
+# here; edits made by hand are applied to the tree. If both sides change the
+# same entry, the file wins.
+- id: greeter
+  name: greeter-plugin
+  config:
+    name: world

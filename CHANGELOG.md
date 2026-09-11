@@ -14,20 +14,22 @@
   - 修正 `internal/plugin` 守卫与 `EntryGroup.remove` 顺序（避免删除/组停止误写 `disabled: true`）
 - **修复：jar 注册表操作并发竞态**（Windows 上 jar 句柄泄漏、临时目录无法删除）——`Loader.loadJar/replaceJar/unload` 串行化：watcher worker 线程与重试池并发调用时 `classLoaders.put` 竞态会导致类加载器被覆盖且从未 `close`
 
+### 示例与文档
+
+- 新增 **`examples/journal-app`**（第 11 个模块）：配置双向同步演示（运行时变更写回文件 / 文件编辑重应用 / 冲突时文件优先）+ 3 个端到端测试；README 双语补真实输出
+- `examples/config-app` 与 `journal-app` 不再依赖工作目录（从 classpath 模板复制到 `target/` 后运行，可从任意目录 `mvn -pl … exec:java`）
+- 修正 README / `docs/hmr-design.md` 中遗留的旧坐标 `io.jcordis` → `io.github.yhnnhyyhnn`（带 1.0.1 版本）
+- `docs/compatibility.md` 对齐基线更新至 cordis `4.0.0-rc.10`；README（中英）HMR / 双向同步能力描述与模块数更新
+
 ### 工具链
 
 - **脚手架依赖版本可配置**：生成的 pom 不再硬编码 SNAPSHOT——默认取脚手架自身构建版本（Maven 资源过滤写入 `jcordis-version.properties`），可用 `-Djcordis.version=<v>`（CLI/Maven 插件 `jcordis.version` 参数）/ `Scaffolder.create(name, target, version)` 覆盖
 - CI：并发测试偶发时序失败增加单次重试（`-Dsurefire.rerunFailingTestsCount=1`），保持信号且不掩盖真实失败
 
-### 测试
+### 测试（journal-app 加入 reactor）
 
-- 新增 `EntryChangeTest`（6）、`JournalTest`（14）、`IncludeJournalTest`（6）、`HmrWatchTest`（3）、`JarPartialReloadTest`（4）、`IncludeIntegrationTest`（+2）、`ScaffolderTest`（+3）：**215 → 249**
+- 新增 `EntryChangeTest`（6）、`JournalTest`（14）、`IncludeJournalTest`（6）、`HmrWatchTest`（3）、`JarPartialReloadTest`（4）、`JournalAppTest`（3）、`IncludeIntegrationTest`（+2）、`ScaffolderTest`（+3）：**215 → 252**
 - `AggregateJarIT/E2eIT` 不再硬编码 jar 版本（surefire/failsafe 注入 `project.version`）
-
-### 文档
-
-- `docs/compatibility.md` 对齐基线更新至 cordis `4.0.0-rc.10`，补充 `hmr.watch()` 实现差异行
-- README（中英）HMR 能力描述更新
 
 ## 1.0.1 — 2026-09-11
 

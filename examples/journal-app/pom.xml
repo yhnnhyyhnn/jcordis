@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <parent>
+    <groupId>io.github.yhnnhyyhnn</groupId>
+    <artifactId>jcordis-parent</artifactId>
+
+    <version>1.0.2-SNAPSHOT</version>
+    <relativePath>../../pom.xml</relativePath>
+  </parent>
+
+  <properties>
+    <!-- Demo code — exempt from the coverage gate: the end-to-end tests run the
+         example in a child JVM (ProcessBuilder), which JaCoCo cannot instrument. -->
+    <coverage.min.line>0.0</coverage.min.line>
+    <coverage.min.branch>0.0</coverage.min.branch>
+  </properties>
+
+  <artifactId>jcordis-example-journal-app</artifactId>
+  <name>jcordis-example-journal-app</name>
+  <description>Two-way config sync demo (runtime changes written back, file edits win conflicts)</description>
+
+  <dependencies>
+    <dependency>
+      <groupId>io.github.yhnnhyyhnn</groupId>
+      <artifactId>jcordis-core</artifactId>
+      <version>${project.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>io.github.yhnnhyyhnn</groupId>
+      <artifactId>jcordis-loader</artifactId>
+      <version>${project.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>org.junit.jupiter</groupId>
+      <artifactId>junit-jupiter</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.assertj</groupId>
+      <artifactId>assertj-core</artifactId>
+      <scope>test</scope>
+    </dependency>
+  </dependencies>
+
+  <build>
+    <plugins>
+      <plugin>
+        <groupId>org.codehaus.mojo</groupId>
+        <artifactId>exec-maven-plugin</artifactId>
+        <version>3.3.0</version>
+        <configuration>
+          <mainClass>io.jcordis.examples.journal.JournalApp</mainClass>
+          <!-- run from any directory: the example resolves app.yml relatively -->
+          <workingDirectory>${project.basedir}</workingDirectory>
+        </configuration>
+      </plugin>
+    </plugins>
+  </build>
+</project>

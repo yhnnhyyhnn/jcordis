@@ -78,8 +78,9 @@ mvn io.github.yhnnhyyhnn:jcordis-maven-plugin:1.0.1:create-plugin -Dname=demo-pl
 |---|---|---|
 | `examples/hello-world` | 最小插件生命周期（加载/卸载） | `mvn -pl examples/hello-world exec:java` |
 | `examples/service-graph` | 服务提供 / 依赖 / 隔离域、依赖响应 | `mvn -pl examples/service-graph exec:java` |
-| `examples/config-app` | YAML 配置 + include + group | `mvn -pl examples/config-app test` |
+| `examples/config-app` | YAML 配置 + include + group | `mvn -pl examples/config-app exec:java` |
 | `examples/hmr-app` | 配置热重载 + 插件 jar 热替换 | `mvn -pl examples/hmr-app exec:java`（改 `jcordis.yml` / `plugins/` 观察热重载） |
+| `examples/journal-app` | 配置双向同步：运行时变更写回文件、文件编辑重应用、冲突时文件优先 | `mvn -pl examples/journal-app exec:java` |
 
 **示例输出**（JDK 21 / Windows）：
 
@@ -99,6 +100,16 @@ entries loaded: 3 (feature-a + group + nested-feature)
 $ mvn -pl examples/hmr-app exec:java
 [hmr-app] watching ...jcordis.yml (config) and ...plugins (plugin jars)
 [hmr-app] edit jcordis.yml or swap plugins/*.jar to see hot reload
+
+$ mvn -pl examples/journal-app exec:java
+loaded from app.yml: world
+--- 1. a runtime change is written back to the file
+app.yml now holds: "runtime"
+--- 2. editing the file reaches the tree
+plugin reloaded with: from-file
+--- 3. conflicting edit: the file wins
+[E] loader config conflict in target\journal-app.yml: entry greeter key "config" modified both in file and at runtime; file wins
+app.yml kept: file-wins (the runtime update was discarded)
 ```
 
 ## 并发模型
@@ -115,7 +126,7 @@ $ mvn -pl examples/hmr-app exec:java
 
 ```xml
 <dependency>
-  <groupId>io.jcordis</groupId>
+  <groupId>io.github.yhnnhyyhnn</groupId>
   <artifactId>jcordis-all</artifactId>
   <version>1.0.1</version>
 </dependency>
@@ -149,7 +160,7 @@ $ mvn -pl examples/hmr-app exec:java
 ## 构建与测试
 
 ```bash
-mvn clean verify   # 10/10 模块，211 测试全绿
+mvn clean verify   # 11/11 模块，252 测试全绿
 mvn -Pcoverage clean verify   # jacoco 覆盖率门禁（LINE >= 80%、BRANCH >= 60%）
 mvn -Pbenchmark -pl jcordis-core test -Dtest=JmhRunnerTest   # JMH 基准
 ```

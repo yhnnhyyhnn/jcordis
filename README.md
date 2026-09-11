@@ -51,7 +51,7 @@ Scaffolding tools ──generate──> Consumers (business apps / examples / pl
 | `jcordis-cli` | `Scaffolder` engine + CLI entry point | core |
 | `jcordis-maven-plugin` | Maven plugin: `create` / `create-plugin` / `check` | — |
 | `jcordis-all` | **Aggregate jar**: shades all runtime modules (except maven-plugin) into a single jar — one coordinate for business systems | core + loader + cli |
-| `examples/*` | hello-world / service-graph / config-app / hmr-app (hot reload demo) examples + demo-plugin (standalone plugin example, not part of the reactor build) | — |
+| `examples/*` | hello-world / service-graph / config-app / hmr-app (hot reload demo) / journal-app (two-way config sync) examples + demo-plugin (standalone plugin example, not part of the reactor build) | — |
 
 ## Requirements
 
@@ -78,8 +78,9 @@ mvn io.github.yhnnhyyhnn:jcordis-maven-plugin:1.0.1:create-plugin -Dname=demo-pl
 |---|---|---|
 | `examples/hello-world` | minimal plugin lifecycle (load/unload) | `mvn -pl examples/hello-world exec:java` |
 | `examples/service-graph` | service provide / dependency / isolation, dependency response | `mvn -pl examples/service-graph exec:java` |
-| `examples/config-app` | YAML config + include + group | `mvn -pl examples/config-app test` |
+| `examples/config-app` | YAML config + include + group | `mvn -pl examples/config-app exec:java` |
 | `examples/hmr-app` | config hot reload + plugin jar hot-swap | `mvn -pl examples/hmr-app exec:java` (edit `jcordis.yml` / `plugins/` to watch it reload) |
+| `examples/journal-app` | two-way config sync: runtime changes written back to the file, file edits re-applied, conflicts keep the file | `mvn -pl examples/journal-app exec:java` |
 
 **Sample output** (JDK 21, Windows):
 
@@ -99,6 +100,16 @@ entries loaded: 3 (feature-a + group + nested-feature)
 $ mvn -pl examples/hmr-app exec:java
 [hmr-app] watching ...jcordis.yml (config) and ...plugins (plugin jars)
 [hmr-app] edit jcordis.yml or swap plugins/*.jar to see hot reload
+
+$ mvn -pl examples/journal-app exec:java
+loaded from app.yml: world
+--- 1. a runtime change is written back to the file
+app.yml now holds: "runtime"
+--- 2. editing the file reaches the tree
+plugin reloaded with: from-file
+--- 3. conflicting edit: the file wins
+[E] loader config conflict in target\journal-app.yml: entry greeter key "config" modified both in file and at runtime; file wins
+app.yml kept: file-wins (the runtime update was discarded)
 ```
 
 ## Concurrency Model
@@ -123,7 +134,7 @@ One coordinate brings in the whole runtime framework (core + loader, including t
 
 ```xml
 <dependency>
-  <groupId>io.jcordis</groupId>
+  <groupId>io.github.yhnnhyyhnn</groupId>
   <artifactId>jcordis-all</artifactId>
   <version>1.0.1</version>
 </dependency>
@@ -157,7 +168,7 @@ Plugin projects produce a **clean jar**: only plugin classes + a `META-INF/servi
 ## Build & Test
 
 ```bash
-mvn clean verify   # 10/10 modules, 211 tests green
+mvn clean verify   # 11/11 modules, 252 tests green
 mvn -Pcoverage clean verify   # jacoco coverage gate (LINE >= 80%, BRANCH >= 60%)
 mvn -Pbenchmark -pl jcordis-core test -Dtest=JmhRunnerTest   # JMH benchmarks
 ```
