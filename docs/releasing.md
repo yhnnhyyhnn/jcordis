@@ -40,6 +40,11 @@ gpg --keyserver keyserver.ubuntu.com --send-keys <KEY_ID>   # 上传公钥（Cen
 
 pom 的 `release` profile 通过 `publishingServerId=central` 与 `passphraseServerId=jcordis-gpg` 引用上述两项。
 
+> **GPG 口令的替代方案**：`passphraseServerId` 在 gpg-plugin 3.2.7 已标记 deprecated
+> （提示可能泄露敏感信息），仅作为本地手动发布可用。更推荐：
+> - **gpg-agent**：`gpg --sign` 一次后由 agent 缓存口令，之后构建不再需要口令配置；
+> - **环境变量**：`export MAVEN_GPG_PASSPHRASE=...`（适合 CI；不要写进仓库/日志）。
+
 **安全**：token 可在 Central 页面随时重新生成；GPG 私钥务必离线备份（丢失后已发布版本的签名无法复现）。发布完成后如怀疑泄露，轮换 token 并考虑更换密钥。
 
 ---
@@ -55,6 +60,17 @@ grep -rn "SNAPSHOT" pom.xml */pom.xml | grep -v dependency   # 确认版本号�
 ```
 
 工作区必须干净（无未提交改动），版本号已由 `X.Y.Z-SNAPSHOT` 改为 `X.Y.Z`。
+
+**发布前预检（不联网、不消耗 Central 额度）**：
+
+```bash
+mvn -Prelease verify -DskipTests     # 验证 sources/javadoc 生成 + GPG 签名 + profile 参数
+ls jcordis-core/target/*.asc         # 确认签名产物存在
+```
+
+该命令实测通过（2026-09-11，1.0.2-SNAPSHOT）：5 个模块均产出
+`-sources.jar` / `-javadoc.jar` / `.asc`，profile 无 unknown 参数告警。
+注意 `deploy` **本身无法预检**（会真实创建 deployment 并消耗额度）。
 
 ### 1. parent 先发布（**必须**）
 
@@ -142,3 +158,13 @@ cd /tmp/jcordis-<version> && mvn clean install
 ```
 
 依赖方（如 majo）在 Central 同步完成前可先指向本地仓库。
+
+---
+
+## 六、额度与排队
+
+Central Portal 对发布次数有限额（按月计时）。当额度用尽时：
+
+- 保持 `X.Y.(Z+1)-SNAPSHOT` 开发，变更照常提交（`CHANGELOG.md` 顶部即待发布内容）；
+- 下月额度恢复后按第二节执行即可——预检（第二节 0）随时可做，**不消耗额度**；
+- **不要**在没有额度的月份尝试 `deploy`：上传会失败或留下半个 deployment，徒增清理。

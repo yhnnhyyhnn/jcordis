@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.0.2-SNAPSHOT（未发布）
+## 1.0.2-SNAPSHOT（未发布——Central 月度额度用尽，待下月发布）
 
 ### HMR / Loader
 
