@@ -52,8 +52,10 @@ class LoaderTransferTest {
         assertThat(moved.parent).isSameAs(loader.resolveGroup("outer"));
         assertThat(moved.id()).isEqualTo("outer:foo");
         assertThat(loader.locate(moved.fiber)).isEqualTo("outer:foo");
-        // jcordis restarts the body on transfer (force reload)
-        assertThat(calls).hasValue(2);
+        // the body does not restart: transfer re-parents and re-links the
+        // context (cordis-aligned — force only bypasses the no-diff
+        // early-return, a restart needs a config change)
+        assertThat(calls).hasValue(1);
     }
 
     @Test

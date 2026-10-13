@@ -4,7 +4,6 @@ import io.jcordis.core.event.EventBus;
 import io.jcordis.core.fiber.EffectRunner;
 import io.jcordis.core.fiber.Fiber;
 import io.jcordis.core.fiber.FiberImpl;
-import io.jcordis.core.fiber.FiberState;
 import io.jcordis.core.logger.LoggerService;
 import io.jcordis.core.reflect.ReflectService;
 import io.jcordis.core.registry.RegistryService;
@@ -131,13 +130,26 @@ public final class ContextImpl implements Context {
             return (T) prop;
         }
         // service access goes through the internal/get waterfall (mirrors
-        // Cordis's proxy handler); the default tail resolves from the store
+        // Cordis's proxy handler); the default tail walks the definition chain:
+        // each fiber's local resolution snapshot first, then its inject
+        // declarations — a declared-but-unresolved dependency fails loudly
+        // instead of leaking a null (mirrors Cordis's required-service walk;
+        // a root-level or never-injected name stays a lenient lookup)
         return (T) events().waterfall((Object) null, "internal/get", new Object[] {this, name}, args -> {
-            if (fiber().state() == FiberState.DISPOSED && fiber().inject().containsKey(name)) {
-                throw new IllegalStateException("cannot get required service \"" + name + "\" in inactive context");
+            Fiber f = fiber();
+            if (f.runtime() == null) {
+                return reflect().get(name, this);
             }
-            Object value = reflect().get(name, this);
-            return value != null ? value : null;
+            for (; f != null; f = f.parent()) {
+                Object local = f.localValue(name);
+                if (local != null) {
+                    return local;
+                }
+                if (f.inject().containsKey(name)) {
+                    throw new IllegalStateException("cannot get required service \"" + name + "\" in inactive context");
+                }
+            }
+            return reflect().get(name, this);
         });
     }
 
@@ -216,6 +228,11 @@ public final class ContextImpl implements Context {
     @Override
     public Object interceptConfig(String name) {
         return interceptMap.get(name);
+    }
+
+    @Override
+    public boolean hasIntercept(String name) {
+        return interceptMap.containsKey(name);
     }
 
     @Override

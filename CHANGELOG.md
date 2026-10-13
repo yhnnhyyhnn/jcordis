@@ -28,6 +28,16 @@
 
 - 352 → **358**（`FiberDisposeChainTest` 3、`HmrTest` 2、`EventBusEdgeTest` 1、`IncludeUpdateScopeTest` 2——后两项为修复前实证变红的复现测试）
 
+### 对齐补全（审查遗留 8 项，全部处置）
+
+- **`registry.delete` 去除冗余 join**（dispose 已同步化）
+- **`Service.resolveConfig` 分层合并**：`hasIntercept` 计入显式 null 层（对合并无贡献，对齐 `Object.hasOwn`+`Object.assign`）；多层 Map 逐键合并后者胜；非 Map 层整体替换
+- **`ctx.get` 的 required-service 语义**（对齐 cordis 定义链行走）：优先 fiber 本地解析快照（dispose 后不再读到残留 impl），inject 声明未解析抛 `cannot get required service`；根 fiber 与未 inject 的名字保持 lenient
+- **`EntryOptions.clear(key)`**：显式实现 cordis 的 null-删除语义（Java 字段无法表达"显式缺席"）
+- **`Entry.update` 逐键 diff**（对齐 force 语义）：intercept/inject 文件修改生效（重建上下文 + notify，不重启 body）；重启仅由 config diff 驱动；group 总是重启级联子条目；isolate 保持重启（无 impl 原地迁移）；transfer 不再重启
+- **`Entry.id()` 无条件父前缀**；**`provide`/`mixin` props 互斥守卫**；**`ServiceKey.of` 去全局缓存表**（按值等价，消除 JVM 级累积）
+- 358 → **374**（`PropsGuardTest` 4、`ResolveConfigLayersTest` 6、`EntryOptionsClearTest` 4 + 两个用例改写为新契约）
+
 ## 1.0.2 — 2026-10-13
 
 **已发布至 Maven Central**（`io.github.yhnnhyyhnn:*:1.0.2`，parent + 5 模块）。

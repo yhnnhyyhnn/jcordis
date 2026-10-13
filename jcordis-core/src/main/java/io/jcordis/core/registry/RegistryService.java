@@ -49,7 +49,9 @@ public final class RegistryService {
         PluginRuntime runtime = internal.remove(plugin);
         if (runtime == null) return null;
         for (Fiber fiber : List.copyOf(runtime.fibers())) {
-            fiber.disposeAsync().join();
+            // disposal runs synchronously on the calling thread — no waiting
+            // (mirrors Cordis, whose delete never blocks on disposal)
+            fiber.disposeAsync();
         }
         return runtime;
     }

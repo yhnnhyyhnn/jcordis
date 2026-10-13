@@ -1589,3 +1589,30 @@ Tests run: 358, Failures: 0（352 → 358）
 Reactor: 11/11 模块 SUCCESS, BUILD SUCCESS
 mvn -Pformat spotless:check -- BUILD SUCCESS
 ```
+
+## 审查遗留 8 项处置:全部修复(2026-10-13)
+
+首轮审查暂缓的 8 项(记录于 compatibility.md 第五节)全部处置完成:
+
+1. **`registry.delete` 去 join**:dispose 同步化后 `join()` 是冗余等待,去除(对齐 cordis 不等待)
+2. **`resolveConfig` 多配置合并**:新增 `Context.hasIntercept`(显式 null 层按 `hasOwn` 计入、对合并无贡献);多层 Map 逐键合并后者胜;非 Map 层整体替换(Java 无法键合并任意值,文档化偏差)
+3. **get 的 required-service 语义**:尾端按 cordis 走定义链——优先 **fiber 本地解析快照**(`Fiber.localValue`,unload 即清,修复 dispose 后经全局 store 读到残留 impl 的泄漏路径),inject 声明未解析则抛错;根 fiber/未 inject 名字保持 lenient(`root.get(未注册)` 仍为 null)
+4. **`EntryOptions.clear(key)`**:Java 字段无法表达"显式缺席",以显式标记实现 cordis 的 null-删除语义;`merge` 执行清除,`copy` 保留标记;普通 null 保持"不动"
+5. **`Entry.update` 逐键 diff 重构**(对齐 cordis force 语义):force 仅绕过 no-diff 短路;重启仅由 config diff 驱动(+group 总是重启以级联子条目、+isolate 保持重启因无 impl 原地迁移);**intercept/inject 文件修改现在生效**(重建上下文 + rebind + notify,不重启 body);transfer 不再重启(cordis 无 transfer,即 update+parent)
+6. **`Entry.id()` 无条件父前缀**:子条目与组同 id 时按 `g:g` 寻址(去同 id 守卫)
+7. **props 守卫**:`provide`/`mixin` 互斥("already declared as accessor/service"),accessor 声明不再是死代码
+8. **`ServiceKey.of` 去全局缓存**:canonical key 本就按值等价(uid=0 + name),CANONICAL 表整体移除
+
+### 实施中发现并被纠正的一个误改
+
+isolate 变更最初随本次重构丢掉了重启——但 jcordis 无 impl 原地迁移(见 compatibility 第三节),body 不重跑则注入的服务仍是旧 realm 的。已恢复 isolate 重启并在 compatibility.md 标注它与 cordis 的差异属性。
+
+### 测试(358 → 374,+16)
+
+新文件 `PropsGuardTest`(4)、`ResolveConfigLayersTest`(6)、`EntryOptionsClearTest`(4)+ 两个按旧契约写的用例改写为新契约(intercept 传播不重启、transfer 不重启)。
+
+```
+Tests run: 374, Failures: 0（358 → 374）
+Reactor: 11/11 模块 SUCCESS, BUILD SUCCESS
+mvn -Pformat spotless:check -- BUILD SUCCESS
+```

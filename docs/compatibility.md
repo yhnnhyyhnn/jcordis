@@ -83,15 +83,17 @@
 | fiber dispose 后 uid | `null` | `-1` | 类型差异 |
 | 时间戳 | `Date.now()` | `System.currentTimeMillis()` | 等价 |
 
-## 五、审查遗留（2026-10-13 全库审查发现、暂不修复的项）
+## 五、2026-10-13 审查遗留项处置（原 8 项，已全部处置）
 
-| 项 | cordis 行为 | jcordis 现状 | 不修原因 |
-|---|---|---|---|
-| `registry.delete` 阻塞 | 不阻塞（异步 dispose） | `delete()` 逐 fiber `join()` | 调用方遍布同步 join 语义；改为异步是破坏性 API 变更，需单独立项 |
-| `Service.resolveConfig` 多配置合并 | `Object.assign` 合并任意对象形状 | 仅合并 `Map`，POJO/String 配置被跳过 | Java 无属性展开；消费方目前只用 Map，POJO 合并语义需先定义 |
-| PENDING fiber 取 injected 服务 | 依赖在 inject 中且不可得 → 抛错 | 返回 `null` | 行为变更会波及所有 inject 用法，需评估现有插件容忍度 |
-| `EntryOptions.merge` 的 null 清除 | update 传 null 即删除字段 | null 被忽略，旧值残留 | 现有调用链（legacy 快照等）依赖“null=不动”语义，改动有数据迁移风险 |
-| 文件驱动 update 的 force | `entry.update(options, true, true)`（force） | `force=false`（仅 config/isolate 变化才重启） | force=true 会让 Include 幂等 refresh 变成全量重启；intercept 文件修改暂不生效（记为已知限制） |
-| `Entry.id()` 前缀守卫 | 无条件父前缀 | 组内同 id 时跳过前缀 | 触发面极窄（显式同 id 嵌套） |
-| `ctx.mixin` | accessor 机制 | 死代码（只写标记不读取） | 未实现功能，按增强项立项而非缺陷 |
-| `ServiceKey.of(name)` CANONICAL 表 | canonical key 属于每棵 context 树 | 全 JVM 静态累积 | 动态服务名场景才会增长，常驻进程影响可忽略 |
+首轮全库审查后暂缓的 8 项，已于同日第二批全部修复或给出 Java 语义的显式对齐：
+
+| 项 | cordis 行为 | 处置 |
+|---|---|---|
+| `registry.delete` 阻塞 | 不阻塞 | 已修：dispose 已同步化后 `join()` 是冗余等待，去除（对齐 cordis 的不等待） |
+| `Service.resolveConfig` 多配置合并 | `Object.assign` 任意形状 | 已修：按层收集（`hasIntercept` 计入显式 null 层，null 层对合并无贡献）；多层 Map 逐键合并后者胜，非 Map 层整体替换（Java 无法键合并任意值，记为文档化偏差） |
+| PENDING fiber 取 injected 服务 | 抛 `cannot get required service` | 已修：get 尾端按 cordis 走定义链——优先 fiber 本地解析快照（unload 即清，杜绝 dispose 后读到残留 impl），声明未解析则抛错；根 fiber 与未 inject 的名字保持 lenient |
+| `EntryOptions.merge` 的 null 清除 | null 即删除 | 已修（显式化）：新增 `clear(key)` 标记删除，`merge` 执行清除——Java 字段无法表达"显式缺席"，普通 null 保持"不动"的历史语义 |
+| 文件驱动 update 的 force | force 仅绕过 no-diff 短路，重启仅由 config diff 驱动 | 已修：`Entry.update` 重构为逐键 diff——intercept/inject 文件修改现在生效（重建上下文 + rebind + notify，**不重启** body，对齐 patch-context 语义）；config 变化才重启；group 条目总是重启（级联子条目）；isolate 变化保持重启（jcordis 无 impl 原地迁移，见第三节）；transfer 不再重启 body（cordis 无 transfer，即 update+parent） |
+| `Entry.id()` 前缀守卫 | 无条件父前缀 | 已修：去除同 id 守卫，子条目与组同 id 时按 `g:g` 寻址 |
+| `ctx.mixin` | accessor 声明 + props 守卫 | 已修：`provide`/`mixin` 互斥守卫（"already declared as accessor/service"）；accessor 的动态属性读取仍不适用（Java 无 Proxy，见第二节） |
+| `ServiceKey.of` CANONICAL 表 | key 属于每棵树 | 已修：canonical key 本就按值等价（uid=0 + name），去掉全局缓存表，消除全 JVM 累积 |

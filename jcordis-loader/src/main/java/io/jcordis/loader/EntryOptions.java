@@ -20,8 +20,59 @@ public final class EntryOptions {
     public Map<String, Object> intercept;
     public Map<String, Object> isolate;
 
+    /**
+     * Keys explicitly marked as cleared via {@link #clear}. Cordis's update
+     * deletes an option whose value is {@code null}; Java fields cannot express
+     * "explicitly absent", so callers mark the deletion instead — a plain
+     * {@code null} field keeps its historical "leave untouched" meaning in
+     * {@link #merge}.
+     */
+    public final transient java.util.Set<String> clears = new java.util.LinkedHashSet<>();
+
+    /** All option keys a {@link #clear} call accepts. */
+    private static final java.util.Set<String> FIELDS =
+            java.util.Set.of("id", "name", "config", "group", "disabled", "inject", "intercept", "isolate");
+
+    /**
+     * Marks {@code key} for deletion on the next {@link #merge} (mirrors
+     * Cordis passing a {@code null} option value). The field is nulled here as
+     * well, so change detection sees the cleared value.
+     *
+     * @throws IllegalArgumentException for an unknown key
+     */
+    public EntryOptions clear(String key) {
+        if (!FIELDS.contains(key)) {
+            throw new IllegalArgumentException("unknown entry option: " + key);
+        }
+        clears.add(key);
+        switch (key) {
+            case "id" -> id = null;
+            case "name" -> name = null;
+            case "config" -> config = null;
+            case "group" -> group = null;
+            case "disabled" -> disabled = null;
+            case "inject" -> inject = null;
+            case "intercept" -> intercept = null;
+            case "isolate" -> isolate = null;
+        }
+        return this;
+    }
+
     /** Copies every non-null field from {@code source}. */
     public void merge(EntryOptions source) {
+        // explicit clears first: a merge must be able to remove fields
+        for (String key : source.clears) {
+            switch (key) {
+                case "id" -> id = null;
+                case "name" -> name = null;
+                case "config" -> config = null;
+                case "group" -> group = null;
+                case "disabled" -> disabled = null;
+                case "inject" -> inject = null;
+                case "intercept" -> intercept = null;
+                case "isolate" -> isolate = null;
+            }
+        }
         if (source.id != null) id = source.id;
         if (source.name != null) name = source.name;
         if (source.config != null) config = source.config;
@@ -46,6 +97,7 @@ public final class EntryOptions {
         copy.inject = inject;
         copy.intercept = intercept;
         copy.isolate = isolate;
+        copy.clears.addAll(clears);
         return copy;
     }
 

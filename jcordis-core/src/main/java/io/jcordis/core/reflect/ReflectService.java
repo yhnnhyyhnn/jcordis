@@ -94,8 +94,16 @@ public final class ReflectService {
         return source.fiber()
                 .effect(
                         runner -> {
-                            ServiceKey<?> key = implKey(name, source);
+                            // a name declared as something else (an accessor)
+                            // cannot double as a service (mirrors Cordis's
+                            // props guard in provide)
+                            String declared = props.get(name);
+                            if (declared != null && !declared.equals("service")) {
+                                throw new IllegalStateException(
+                                        "property \"" + name + "\" is already declared as " + declared);
+                            }
                             props.put(name, "service");
+                            ServiceKey<?> key = implKey(name, source);
                             Impl impl = new Impl(name, value, source.fiber(), check);
                             // atomic compare-and-set: concurrent provides of the
                             // same name are serialized — exactly one wins
@@ -146,6 +154,12 @@ public final class ReflectService {
     /** Declares mixin accessor keys for a service. */
     public void mixin(String source, List<String> keys) {
         for (String key : keys) {
+            // a name already declared as a service cannot double as an
+            // accessor (mirrors Cordis's props guard)
+            String declared = props.get(key);
+            if (declared != null && !declared.equals("accessor")) {
+                throw new IllegalStateException("property \"" + key + "\" is already declared as " + declared);
+            }
             props.put(key, "accessor");
         }
     }

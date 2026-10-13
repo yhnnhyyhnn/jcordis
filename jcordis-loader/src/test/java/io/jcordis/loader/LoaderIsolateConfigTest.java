@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import io.jcordis.core.context.Context;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Test;
 
@@ -95,8 +96,10 @@ class LoaderIsolateConfigTest {
     void interceptUpdate_shouldPropagateToRunningFiber() {
         Context root = Context.create();
         Loader loader = new Loader(root);
+        AtomicInteger runs = new AtomicInteger();
         AtomicReference<Object> seen = new AtomicReference<>("sentinel");
         loader.mock("svc", (ctx, config) -> {
+            runs.incrementAndGet();
             seen.set(ctx.interceptConfig("svc"));
             return null;
         });
@@ -107,14 +110,28 @@ class LoaderIsolateConfigTest {
         loader.create(options, null);
         assertThat(seen.get()).isNull();
 
-        // config update that changes the intercept option must reach the fiber
-        // body on restart (mirrors Cordis's Object.setPrototypeOf patch)
+        // an intercept edit propagates onto the RUNNING fiber's context and
+        // re-resolves services — without restarting the body (mirrors Cordis's
+        // patch-context swap + notify; only a config change restarts)
         EntryOptions updated = entry("a");
         updated.id = "a";
         updated.name = "svc";
         updated.intercept = Map.of("svc", Map.of("base", "url"));
         loader.update("a", updated, null);
 
+        assertThat(runs).as("intercept edits do not restart the body").hasValue(1);
+        assertThat(loader.resolve("a").fiber.ctx().interceptConfig("svc")).isEqualTo(Map.of("base", "url"));
+
+        // a config change still restarts, and the restarted body is
+        // constructed under the new intercept
+        EntryOptions reconfigured = entry("a");
+        reconfigured.id = "a";
+        reconfigured.name = "svc";
+        reconfigured.intercept = Map.of("svc", Map.of("base", "url"));
+        reconfigured.config = Map.of("v", 1);
+        loader.update("a", reconfigured, null);
+
+        assertThat(runs).hasValue(2);
         assertThat(seen.get()).isEqualTo(Map.of("base", "url"));
     }
 }

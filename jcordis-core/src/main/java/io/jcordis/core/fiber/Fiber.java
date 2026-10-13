@@ -35,6 +35,26 @@ public interface Fiber {
     /** The plugin runtime this fiber belongs to, or {@code null} for the root. */
     PluginRuntime runtime();
 
+    /**
+     * The parent fiber in the definition chain, or {@code null} for the root.
+     * Used to walk inject declarations outward (mirrors Cordis's fiber-chain
+     * walk when resolving a required service).
+     */
+    default Fiber parent() {
+        return null;
+    }
+
+    /**
+     * This fiber's resolved snapshot of the service {@code name} (its inject
+     * cache), or {@code null} when the dependency is not currently available.
+     * Resolution prefers this local snapshot over the global registry, so a
+     * disposed fiber cannot leak stale services (mirrors Cordis reading
+     * {@code fiber.store} during the required-service walk).
+     */
+    default Object localValue(String name) {
+        return null;
+    }
+
     /** The loader entry this fiber belongs to, or {@code null}. */
     default Object entry() {
         return null;

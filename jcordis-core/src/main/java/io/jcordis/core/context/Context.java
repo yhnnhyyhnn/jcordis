@@ -105,6 +105,13 @@ public interface Context {
     /** Returns the intercepted config for {@code name} in this context, or {@code null}. */
     Object interceptConfig(String name);
 
+    /**
+     * Whether an intercept config exists for {@code name} on this context
+     * level — present even when its value is {@code null} (mirrors Cordis's
+     * {@code Object.hasOwn} check, which counts explicitly-null layers).
+     */
+    boolean hasIntercept(String name);
+
     /** Creates a child context intercepting the config of service {@code name}. */
     Context intercept(String name, Object config);
 

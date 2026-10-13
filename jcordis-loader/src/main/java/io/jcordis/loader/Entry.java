@@ -52,9 +52,11 @@ public final class Entry {
     }
 
     public String id() {
+        // unconditional parent prefix (mirrors Cordis): a child sharing its
+        // group's id must still be addressable as "group:child" — dropping
+        // the prefix would collide with the group entry itself
         String id = options.id;
-        Object parentEntry = parent.ctx.fiber().entry();
-        if (parentEntry instanceof Entry parentEntryObj && !parentEntryObj.options.id.equals(options.id)) {
+        if (parent.ctx.fiber().entry() instanceof Entry parentEntryObj) {
             id = parentEntryObj.id() + EntryTree.SEP + id;
         }
         return id;
@@ -86,6 +88,8 @@ public final class Entry {
         EntryOptions.Snapshot legacy = options.snapshot();
         Object legacyConfig = options.config;
         Map<String, Object> legacyIsolate = options.isolate;
+        Map<String, Object> legacyIntercept = options.intercept;
+        Map<String, Object> legacyInject = options.inject;
         if (create) {
             copyInto(source, options);
         } else {
@@ -109,24 +113,58 @@ public final class Entry {
 
         if (fiber == null) {
             init();
-        } else if (force
-                || !java.util.Objects.equals(options.config, legacyConfig)
-                || isolateChanged(legacyIsolate, options)) {
-            // mirror Cordis: emit the partial-dispose event before reloading
-            ctx.events().emit((Object) null, "loader/partial-dispose", this, legacy, true);
-            rebuildCtx();
-            // propagate the rebuilt intercept/isolate context onto the running
-            // fiber before restart (mirrors Cordis's Object.setPrototypeOf patch)
-            fiber.rebindContext(ctx);
-            fiber.update(resolveConfig(), true);
-            // isolate moves re-key services: notify the changed names so
-            // dependents re-resolve under their (rebound) realms — mirrors
-            // Cordis's isolate plugin patch-context step 6
-            java.util.Set<String> changed = changedIsolateNames(legacyIsolate, options);
-            if (!changed.isEmpty()) {
-                ctx.reflect().notify(java.util.List.copyOf(changed), ctx);
-            }
+            return;
         }
+        // diff per option (mirrors Cordis's changed-key diff): only an actual
+        // config change restarts the body — `force` merely bypasses the
+        // early-return so the context rebuild still runs, and an intercept or
+        // inject edit reaches the running fiber without a restart
+        boolean configChanged = !java.util.Objects.equals(options.config, legacyConfig);
+        boolean isolateChanged = isolateChanged(legacyIsolate, options);
+        boolean interceptChanged = !java.util.Objects.equals(options.intercept, legacyIntercept);
+        boolean injectChanged = !java.util.Objects.equals(options.inject, legacyInject);
+        if (!force && !configChanged && !isolateChanged && !interceptChanged && !injectChanged) {
+            return;
+        }
+        // mirror Cordis: emit the partial-dispose event before reloading
+        ctx.events().emit((Object) null, "loader/partial-dispose", this, legacy, true);
+        rebuildCtx();
+        // propagate the rebuilt intercept/isolate context onto the running
+        // fiber before restart (mirrors Cordis's Object.setPrototypeOf patch)
+        fiber.rebindContext(ctx);
+        // config changes restart the body; group entries always do (their
+        // config list is compared by reference and a restart re-evaluates the
+        // children under the current disabled state — mirrors Cordis's
+        // `diff.includes('config') || this.options.group`); isolate moves
+        // restart too — jcordis has no in-place impl migration (services
+        // injected by the body come from the old realm until it re-runs; see
+        // compatibility.md). An intercept or inject edit only re-keys the
+        // context: notify, no restart
+        if (configChanged || isolateChanged || Boolean.TRUE.equals(options.group)) {
+            fiber.update(resolveConfig(), true);
+        }
+        // isolate/intercept changes re-key or re-configure services: notify
+        // the changed names so dependents re-resolve under their (rebound)
+        // realms — mirrors Cordis's patch-context swap + notify
+        java.util.Set<String> changed = changedIsolateNames(legacyIsolate, options);
+        changed.addAll(changedMapKeys(legacyIntercept, options.intercept));
+        if (!changed.isEmpty()) {
+            ctx.reflect().notify(java.util.List.copyOf(changed), ctx);
+        }
+    }
+
+    /** Names whose map-valued option actually changed (for post-reload notification). */
+    private static java.util.Set<String> changedMapKeys(Map<String, Object> legacy, Map<String, Object> next) {
+        java.util.Set<String> changed = new java.util.LinkedHashSet<>();
+        if (legacy != null) {
+            changed.addAll(legacy.keySet());
+        }
+        if (next != null) {
+            changed.addAll(next.keySet());
+        }
+        changed.removeIf(key ->
+                java.util.Objects.equals(legacy != null ? legacy.get(key) : null, next != null ? next.get(key) : null));
+        return changed;
     }
 
     /** Whether the isolate option map changed (label/local-realm moves). */

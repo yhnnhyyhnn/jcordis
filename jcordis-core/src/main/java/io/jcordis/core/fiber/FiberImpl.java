@@ -186,6 +186,17 @@ public final class FiberImpl implements Fiber {
     }
 
     @Override
+    public Fiber parent() {
+        return parent;
+    }
+
+    @Override
+    public Object localValue(String name) {
+        Impl impl = store.get(name);
+        return impl != null ? impl.value() : null;
+    }
+
+    @Override
     public Map<String, Object> inject() {
         return inject;
     }

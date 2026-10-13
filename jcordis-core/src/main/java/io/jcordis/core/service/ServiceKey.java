@@ -1,7 +1,6 @@
 package io.jcordis.core.service;
 
 import java.util.Objects;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
 
 /**
@@ -20,7 +19,6 @@ import java.util.concurrent.atomic.AtomicLong;
  */
 public final class ServiceKey<T> {
 
-    private static final ConcurrentHashMap<String, ServiceKey<?>> CANONICAL = new ConcurrentHashMap<>();
     private static final AtomicLong UID = new AtomicLong();
 
     private final String name;
@@ -31,10 +29,14 @@ public final class ServiceKey<T> {
         this.uid = uid;
     }
 
-    /** Returns the canonical (globally shared) key for the given service name. */
-    @SuppressWarnings("unchecked")
+    /**
+     * Returns the canonical key for the given service name. Canonical keys are
+     * value-comparable ({@code uid == 0}, equality by name), so no instance
+     * cache is needed — caching them would accumulate one entry per distinct
+     * service name for the lifetime of the JVM.
+     */
     public static <T> ServiceKey<T> of(String name) {
-        return (ServiceKey<T>) CANONICAL.computeIfAbsent(name, key -> new ServiceKey<>(key, 0));
+        return new ServiceKey<>(name, 0);
     }
 
     /** Returns a brand-new key that is unequal to every other key. */
