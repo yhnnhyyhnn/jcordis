@@ -70,7 +70,7 @@ public final class Scaffolder {
             // fall through to the implementation version
         }
         String implementation = Scaffolder.class.getPackage().getImplementationVersion();
-        return implementation != null ? implementation : "1.0.3";
+        return implementation != null ? implementation : "1.0.4-SNAPSHOT";
     }
 
     /** Converts a project name into a Java package ({@code my-app} → {@code my.app}). */
