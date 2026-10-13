@@ -139,6 +139,29 @@ class LoaderGuardsTest {
                 .isEqualTo("g:child");
     }
 
+    @Test
+    void readShouldRejectEntryIdsContainingTheSeparator() {
+        Loader loader = new Loader(Context.create());
+        loader.builtin("demo", (ctx, cfg) -> null);
+
+        loader.read(List.of(entry("2", "demo"), entry("3:4", "demo")));
+
+        // the bad id is rejected (and logged) while the rest of the batch loads
+        assertThat(loader.store.get("3:4")).isNull();
+        assertThat(loader.expectFiber("2")).isNotNull();
+        assertThat(loader.expectFiber("2").state()).isEqualTo(io.jcordis.core.fiber.FiberState.ACTIVE);
+    }
+
+    @Test
+    void createShouldThrowOnIdContainingTheSeparator() {
+        Loader loader = new Loader(Context.create());
+        loader.builtin("demo", (ctx, cfg) -> null);
+
+        assertThatThrownBy(() -> loader.create(entry("a:b", "demo"), null))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("entry id must not contain");
+    }
+
     private static Path buildJar(String jarName, String... serviceClasses) throws IOException {
         Path jar = Files.createTempFile(jarName, ".jar");
         Path fixtureClasses = Paths.get("target", "test-fixtures-classes");

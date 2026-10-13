@@ -10,8 +10,10 @@ import io.jcordis.loader.EntryOptions;
 import io.jcordis.loader.EntryTree;
 import io.jcordis.loader.Loader;
 import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
@@ -97,7 +99,7 @@ public class Include implements Plugin {
                         refresh();
                         return null;
                     }
-                    if (args.length > 2 && args[2] instanceof java.util.function.Supplier<?> next) {
+                    if (args.length > 1 && args[1] instanceof java.util.function.Supplier<?> next) {
                         return next.get();
                     }
                     return null;
@@ -305,9 +307,14 @@ public class Include implements Plugin {
         String current;
         try {
             current = Files.readString(path, StandardCharsets.UTF_8);
-        } catch (IOException e) {
+        } catch (NoSuchFileException e) {
+            // only a missing file is "unknown state, keep waiting": any other
+            // read failure must surface so the caller learns the write never
+            // happened (mirrors Cordis #171)
             warn("config file " + path + " is missing, " + journal.size() + " pending change(s) kept in memory");
             return;
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
         }
         if (!current.equals(cache.content())) {
             // someone else wrote the file: merge first, then come back

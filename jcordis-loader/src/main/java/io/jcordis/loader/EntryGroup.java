@@ -79,13 +79,21 @@ public final class EntryGroup {
         ids.addAll(newMap.keySet());
         for (String id : ids) {
             if (newMap.containsKey(id)) {
-                EntryOptions options = newMap.get(id);
-                Entry entry = tree.store.get(id);
-                if (entry != null) {
-                    // existing entry: replace options in full, restart only on config change
-                    entry.update(options, true, false);
-                } else {
-                    create(options);
+                // one bad entry (e.g. an id containing the tree separator)
+                // must not abort the rest of the batch (mirrors Cordis's
+                // `create(...).catch(error => ctx.logger.error(error))`)
+                try {
+                    EntryOptions options = newMap.get(id);
+                    Entry entry = tree.store.get(id);
+                    if (entry != null) {
+                        // existing entry: replace options in full, restart only on config change
+                        entry.update(options, true, false);
+                    } else {
+                        create(options);
+                    }
+                } catch (RuntimeException | Error error) {
+                    Context logger = tree.loader() != null ? tree.loader().ctx() : tree.treeContext();
+                    logger.logger("loader").error(error);
                 }
             } else {
                 remove(id);

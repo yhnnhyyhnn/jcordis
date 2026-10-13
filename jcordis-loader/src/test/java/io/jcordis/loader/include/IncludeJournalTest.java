@@ -155,4 +155,58 @@ class IncludeJournalTest {
         // the value comes from the patch, so the change belongs to the patch
         assertThat(Files.readString(config)).as("patch-owned entry untouched").contains("n: 1");
     }
+
+    @Test
+    void writeBackWithMissingFileShouldKeepJournalInMemory() throws IOException {
+        Path config = tempDir.resolve("app.yml");
+        Files.writeString(config, "- id: feature\n  name: feature-plugin\n", StandardCharsets.UTF_8);
+        Context root = Context.create();
+        Loader loader = new Loader(root);
+        loader.mock("feature-plugin", (ctx, cfg) -> null);
+        Include include = include(loader, config);
+
+        // a missing file is unknown state, not an error: the journal waits
+        Files.delete(config);
+        EntryOptions next = new EntryOptions();
+        next.disabled = true;
+        loader.update("feature", next, null);
+        include.flush();
+
+        assertThat(include.pendingChanges()).as("journal kept in memory").isEqualTo(1);
+        assertThat(logText(root)).contains("is missing");
+    }
+
+    @Test
+    void writeBackWithUnreadableFileShouldSurfaceTheError() throws IOException {
+        Path config = tempDir.resolve("app.yml");
+        Files.writeString(config, "- id: feature\n  name: feature-plugin\n", StandardCharsets.UTF_8);
+        Context root = Context.create();
+        Loader loader = new Loader(root);
+        loader.mock("feature-plugin", (ctx, cfg) -> null);
+        Include include = include(loader, config);
+
+        // only a missing file counts as "waiting": any other read failure must
+        // surface (mirrors Cordis #171)
+        Files.delete(config);
+        Files.createDirectory(config);
+        EntryOptions next = new EntryOptions();
+        next.disabled = true;
+        loader.update("feature", next, null);
+        include.flush();
+
+        assertThat(include.pendingChanges()).as("journal kept in memory").isEqualTo(1);
+        assertThat(logText(root)).contains("failed to write config file");
+    }
+
+    private static String logText(Context root) {
+        StringBuilder text = new StringBuilder();
+        for (io.jcordis.core.logger.Message message : root.loggerService().buffer()) {
+            text.append(message.type()).append(' ');
+            for (Object arg : message.args()) {
+                text.append(arg).append(' ');
+            }
+            text.append('\n');
+        }
+        return text.toString();
+    }
 }

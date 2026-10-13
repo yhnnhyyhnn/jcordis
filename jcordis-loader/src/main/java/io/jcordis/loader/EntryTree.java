@@ -80,6 +80,9 @@ public abstract class EntryTree {
             do {
                 options.id = Long.toHexString((long) (Math.random() * 0xffffffffL));
             } while (store.containsKey(options.id));
+        } else if (options.id.contains(SEP)) {
+            // IDs containing the tree separator cannot be resolved by resolve().
+            throw new IllegalArgumentException("entry id must not contain \"" + SEP + "\": " + options.id);
         }
         return options.id;
     }

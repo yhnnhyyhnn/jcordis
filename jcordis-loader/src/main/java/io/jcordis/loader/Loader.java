@@ -25,7 +25,7 @@ import java.util.jar.JarFile;
  * {@code builtins} registry (SPI-style) plus a user {@code modules} registry,
  * and wires loader behavior into the core event system:
  * <ul>
- *   <li>{@code internal/update} — a plugin updating its own config is written
+ *   <li>{@code internal/commit} — a plugin committing its own config is written
  *       back to the entry and persisted;</li>
  *   <li>{@code internal/plugin} — a plugin fiber disposing itself marks its
  *       entry disabled and persists the change.</li>
@@ -55,25 +55,21 @@ public class Loader extends EntryTree {
         // dependency readiness when the `await` intercept config is active
         ctx.reflect().provide("loader", this, ctx, ignored -> checkLoader());
 
+        // a plugin committing its own config is written back to the entry and
+        // persisted, whether or not the fiber is currently loaded — the commit
+        // is separated from the update chain (mirrors Cordis's `internal/commit`)
         ctx.on(
-                "internal/update",
+                "internal/commit",
                 (thisArg, args) -> {
-                    Object config = args[0];
-                    Boolean noSave = (Boolean) args[1];
-                    if (thisArg instanceof Fiber fiber
-                            && fiber.entry() instanceof Entry entry
-                            && !Boolean.TRUE.equals(noSave)) {
+                    if (thisArg instanceof Fiber fiber && fiber.entry() instanceof Entry entry && args.length > 0) {
                         EntryOptions legacy = entry.options.copy();
-                        entry.options.config = config;
+                        entry.options.config = args[0];
                         entry.parent.tree.commit(
                                 EntryChange.updated(entry.options.id, entry.parent, null, entry.options, legacy));
                     }
-                    if (args.length > 2 && args[2] instanceof java.util.function.Supplier<?> next) {
-                        return next.get();
-                    }
                     return null;
                 },
-                EventOptions.of(true, true));
+                EventOptions.of(false, true));
 
         ctx.on(
                 "internal/plugin",
