@@ -6,7 +6,7 @@
 
   <groupId>io.github.yhnnhyyhnn</groupId>
   <artifactId>jcordis-parent</artifactId>
-  <version>1.0.3-SNAPSHOT</version>
+  <version>1.0.3</version>
   <packaging>pom</packaging>
 
   <name>jcordis</name>
