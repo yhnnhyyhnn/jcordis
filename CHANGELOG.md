@@ -2,6 +2,32 @@
 
 ## 1.0.3-SNAPSHOT（未发布）
 
+### 缺陷修复（全库审查专项，修复 22 项）
+
+**Include / HMR**：
+
+- **`internal/update` 钩子改 fiber-local**：不再误拦截 config 恰好含相同 `path` 键的无关插件（其重启曾被短路吞掉）
+- **文件驱动 re-apply 保留文件外条目**：include 不再把自己删成孤儿 fiber（监听器/journal/HMR watch 全泄漏），运行时创建的外部条目不再被文件保存静默移除
+- **`Entry.initializing` 重入守卫**：初始化期间的树重入不再构造第二个插件实例（无限递归）
+- **销毁注销 HMR watch + `refresh`/`readAndApply` disposed 守卫**：僵尸 include 不再重写加载树；同路径每个 include 各自注册 watch
+- **journal 并发保护 + 写回 snapshot/swap**：任意树变更线程与 HMR 轮询线程的竞态消除；写回期间到达的变更不再被 `clear()` 一并丢弃；`stop` 前最后冲刷
+- **Hmr 便捷路径走 `ConfigParser`**：配置文件里 group 内的子插件不再被静默丢弃；匿名条目不再折叠成一个
+- **reconcile 补 moved-both 冲突**：文件与运行时同时移动条目时文件胜出并报告（不再静默回滚用户编辑）
+- **JarWatcher 每变更 10 次重试预算**：永久损坏的 jar 不再 200ms 无限循环
+
+**Core**：
+
+- **销毁链逐项容错**：一个 dispose 回调抛异常不再中断整条销毁链（剩余 fiber 曾永久泄漏）；plugin 销毁改调用线程同步执行（消除 ForkJoinPool 饥饿死锁面）
+- **`set(ServiceKey)` 未注册 key 抛清晰错误**（原 NPE）
+- **日志保留异常堆栈**：Throwable 首参渲染类名/堆栈/cause 链/AggregateError 成员（原只剩一行 message）
+- **inject 配置生效**：非 null inject 配置写入 fiber ctx 的 intercept 层（原全库无消费点、静默失效）
+- **`internal/service` 经 per-name 过滤**：不再跨隔离域泄漏
+- 低风险：hooks 空表删除、`once` 并发 CAS、重复注册注销单删、`%d/%f` 非数字 NaN 容错、调色板索引掩码、`LoggerService.buffer()` 快照、`normalizeGroups` 过滤 null 子项
+
+### 测试
+
+- 352 → **358**（`FiberDisposeChainTest` 3、`HmrTest` 2、`EventBusEdgeTest` 1、`IncludeUpdateScopeTest` 2——后两项为修复前实证变红的复现测试）
+
 ## 1.0.2 — 2026-10-13
 
 **已发布至 Maven Central**（`io.github.yhnnhyyhnn:*:1.0.2`，parent + 5 模块）。
