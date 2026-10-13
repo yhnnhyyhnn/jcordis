@@ -2,7 +2,7 @@
 
 > 本文档明确 jcordis 对 Cordis（TypeScript）移植过程中的**保留、修改、裁剪**，是行为对齐的权威参考。
 >
-> **对齐基线**：cordis `4.0.0-rc.10`（含 loader `commit(EntryChange)`、`hmr.watch()` 等 2026-09 变更）
+> **对齐基线**：cordis `4.0.0-rc.10` + 2026-10 上游修复（`f8ea3cd..c261dd2`：fiber 重载版本号、每次重载解析配置、`internal/commit` 分离、`internal/update` 钩子随 fiber 处置、throttle dispose 防护、entry id 分隔符校验、Include ENOENT 判定）
 
 ## 一、完全保留（语义等价）
 
@@ -10,7 +10,9 @@
 |---|---|---|---|
 | 时空可组合性 | `ctx.effect()` 立即执行 + 逆序 dispose | `FiberImpl.effect` 相同 | FiberEffectTest |
 | 事件总线 | 五种派发模式（emit/parallel/serial/bail/waterfall） | `EventBus` 相同（含 thisArg 过滤、AggregateError、isBailed） | EventBusTest |
-| 内部事件 | internal/update、internal/listener 拦截、fiber 本地 hooks | 相同 | EventBusTest.update_shouldRunFiberLocalUpdateListeners |
+| 内部事件 | internal/update（已加载 fiber 的瀑布链，`config, next` 签名）、internal/listener 拦截、fiber 本地 hooks（**随 fiber 处置，重载不累积**） | 相同 | FiberUpdateSemanticsTest、EventBusTest.update_shouldRunFiberLocalUpdateListeners |
+| 重载版本号 | epoch = `revision:uid…`；`restart()` 递增 revision；被取代的异步 load 只清理，不置错/不激活新目标 | 相同（`FiberImpl.revision` + 完成回调 epoch 防护） | FiberUpdateSemanticsTest.supersededFailure/Disposable |
+| 配置解析时机 | `internal/config` 瀑布在**每次重载与每次 update** 时解析（fiber 保存源 config）；持久化经 `internal/commit`（与重启解耦，未加载 fiber 也提交）；未加载 fiber 的 update 跳过钩子链直接重启 | 相同（jcordis 无 schema 校验，`internal/config` 默认透传，作为扩展点保留） | FiberUpdateSemanticsTest.configShouldBeResolved…/unloadedFiberUpdate… |
 | 内部事件链 | `internal/get`/`internal/set` 瀑布（可拦截/替换/拒绝）、`internal/status` 状态转换通知 | 相同（get/set 经 `events().waterfall`；状态转换经 `transitionState` 发射） | FiberEffectTest.internalGet/Set/Status |
 | 失败恢复 | FAILED 状态仅 `update()` 清除 `_error` 后恢复；`await()` 抛错 | 相同 | FiberFailureTest |
 | 效应可观测性 | `fiber.getEffects()`（label/children 树） | `EffectMeta` + `Fiber.getEffects()` 相同 | FiberEffectTest.getEffects |
@@ -19,8 +21,8 @@
 | 插件生命周期 | 插件 fiber 注册为父 fiber effect、逆序级联卸载 | 相同 | PluginRegistryTest、E2eDemoTest |
 | thisArg 过滤 | `Session[Context.filter]` 协议、Service 作为 EventFilter | `EventFilter` 接口 + `Service.test()` 相同 | IsolateTest.isolatedEvent |
 | Logger | 有界 buffer、exporter 注册（effect 回滚）、name 派生链 | 相同 | LoggerTest |
-| Loader | EntryTree/EntryGroup/Entry、disabled 祖先链、group 子树、config 变更重启（diff 检测）、intercept/isolate 更新传播（rebindContext）、entry inject 合并、await 就绪门控、`locate()`/`partial-dispose` 事件 | 相同（核心语义） | LoaderBasicTest、LoaderGroupTest、LoaderIsolateConfigTest、EntryConfigChangeTest |
-| Timer | timeout/interval/throttle/debounce + effect 自动清理 | 相同 | TimerTest |
+| Loader | EntryTree/EntryGroup/Entry、disabled 祖先链、group 子树、config 变更重启（diff 检测）、intercept/isolate 更新传播（rebindContext）、entry inject 合并、await 就绪门控、`locate()`/`partial-dispose` 事件、**entry id 含树分隔符 `:` 抛错且不中断同批其余条目** | 相同（核心语义） | LoaderBasicTest、LoaderGroupTest、LoaderIsolateConfigTest、EntryConfigChangeTest、LoaderGuardsTest |
+| Timer | timeout/interval/throttle/debounce + effect 自动清理；**dispose 后 wrapper 永不再执行（含窗口已过的立即分支）** | 相同 | TimerTest、TimerEdgeTest |
 
 ## 二、有意的实现差异（语义等价，形态不同）
 
@@ -58,8 +60,18 @@
 | ANSI 颜色完整格式化 | `%o` inspect、C256 色板、showDiff | ConsoleExporter 基础 ANSI + %s/%d；深度 inspect 未移植 | |
 | `interval(delay)` async iterator | JS AsyncIterable | 未移植（仅回调形态） | |
 | include js-expr YAML 标签 | `!js` 标签 → eval | 未移植（安全决策） | |
-| include 文件热重载 | include.refresh() + watcher + 双向 journal 写回 | 同（`Hmr` 轮询 + `Include` journal 写回）；patch 变更不回写 patch（patch 拥有项的变化不落盘） | |
+| include 文件热重载 | include.refresh() + watcher + 双向 journal 写回 | 同（`Hmr` 轮询 + `Include` journal 写回）；patch 变更不回写 patch（patch 拥有项的变化不落盘） | 写回前只把 **ENOENT** 当"文件缺失等待"，其他读失败上抛（对齐 #171） |
 | Maven Archetype | | 未做（选方案 A：内嵌模板 CLI） | |
+
+### 2026-10 上游不适用项（`f8ea3cd..c261dd2` 中 6 项）
+
+| cordis 提交 | 内容 | jcordis 判定 |
+|---|---|---|
+| `00432ef` | Entry `_initTask` 保持到 init 落定（ESM 动态 import 任务） | 不适用：jcordis 条目同步加载，`_initTask` 从不赋值 |
+| `9f5e690` | `parallel()` 向 internal/dispatch 报告 `parallel` 模式 | 已是修复后形态（`resolve("parallel", …)`） |
+| `91708e7` | hmr.watch 路径与 baseDir 大小写不一致（Windows） | 不适用：Java `Path.equals/hashCode` 在 Windows 大小写不敏感，watch key 天然归一 |
+| `ade19d0` | `process.argv[1]` 缺失时收集 externals 防护 | 不适用：jcordis 无 ESM loadCache/externals 概念 |
+| `0221244` / `c3cc637` | create 脚手架的 `.yarnrc.yml` / yarn 临时二进制 | 不适用：jcordis-cli 是 Maven 脚手架，无 yarn |
 
 ## 四、已知行为差异
 

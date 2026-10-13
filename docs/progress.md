@@ -1504,3 +1504,45 @@ Tests run: 337, Failures: 0（290 → 337）
 Reactor: jcordis 11/11 模块 SUCCESS, BUILD SUCCESS
 mvn -Pformat spotless:check -- BUILD SUCCESS
 ```
+
+## 对照 cordis：2026-10 上游修复批次（2026-10-13）
+
+参考 `f8ea3cd..c261dd2`（12 提交），**6 项适用并移植，6 项经核对不适用**（其中 `9f5e690` 确认 jcordis 已是修复后形态）。
+
+### A. fiber 重载版本号（`c261dd2` #189 — 本轮最重要）
+
+并发 `update`/`restart` 期间，被取代的异步 load 完成后会污染新 load 的状态（旧 body 抛错 → 新 fiber 被置 FAILED；旧 body 返回 disposable → 与新 body 的混收集；旧 handle 清掉新 `inertia`）。修复：
+
+- `FiberImpl.revision`：epoch 格式 `"revision:uid…"`，`restart()` 递增 revision（不再途经 INACTIVE）
+- `transition` 新增 **active→active** 分支：revision 或依赖 uid 变化 = 先 `unloadBody` 再 `reload`（顺带修复了"依赖服务换新 fiber 后不重载"的既有缺口）
+- `reload` 完成回调捕获本轮 `loadEpoch`：被取代的失败**只记日志**不置 `error`/FAILED；被取代的 disposable **立即处置**不收集；不清新 load 的 `inertia`
+
+### B. 配置解析时机 + 提交分离（`1431598` #134）
+
+- 新增 `internal/config` 瀑布：**每次 reload 与每次 update** 都经它解析（插件 body 与 update 钩子看到 resolved,fiber 保存源 config）。jcordis 无 schema,默认透传,作为扩展点保留
+- 新增 `internal/commit`（emit）：持久化与重启解耦 —— Loader 的写回监听器从 `internal/update` 迁到 `internal/commit`,`noSave=true` 仍跳过
+- `update(config, noSave)` 新语义：**未加载 fiber**（依赖未满足 / 已失败）跳过 `internal/update` 钩子链直接 `restart`,但 config 照常提交;钩子链签名简化为 `(config, next)`
+
+### C. `internal/update` 钩子随 fiber 处置（`7d0a90d` #56）
+
+fiber 本地钩子此前挂在 fiber 对象上且**不随重载清理** → 插件每重载一次就多一个钩子（3 次 update 实际调用 1+2+3 次）。修复：注册包一层 `fiber.effect`，重载（drainEffects）自动注销。
+
+### D. 其余三项
+
+- `10e1b1f`（#161）：throttle/debounce 的 wrapper 开头检查 `isDisposed` —— 修复前 dispose 后再调用且窗口已过会**照常执行** callback（立即分支无防护）
+- `518b8bc`（#172）：`EntryTree.ensureId` 拒绝含树分隔符 `:` 的 id（抛 `IllegalArgumentException`）；`EntryGroup.update` 补 per-entry try/catch —— 坏 id 记日志,同批其余条目照常加载
+- `7580bfc`（#171）：`Include.writeBack` 只把 `NoSuchFileException` 当"文件缺失等待",其他读失败上抛（走 drain 的 error 路径,journal 保留）
+
+### 不适用项（详见 compatibility.md 第三节新表）
+
+`00432ef`（同步加载无 `_initTask`）、`9f5e690`（已是修复后形态）、`91708e7`（Windows `Path.equals` 大小写不敏感,天然免疫）、`ade19d0`/`0221244`/`c3cc637`（Node/yarn 特定）。
+
+### 验证
+
+新测试 +15（`FiberUpdateSemanticsTest` 10、`TimerEdgeTest` +1、`LoaderGuardsTest` +2、`IncludeJournalTest` +2）。**回归有效性已验证**：临时还原修复前逻辑,`supersededFailure/supersededDisposable/throttleAfterDispose` 三例按预期变红后恢复。
+
+```
+Tests run: 352, Failures: 0（337 → 352）
+Reactor: 11/11 模块 SUCCESS, BUILD SUCCESS
+mvn -Pformat spotless:check -- BUILD SUCCESS
+```
