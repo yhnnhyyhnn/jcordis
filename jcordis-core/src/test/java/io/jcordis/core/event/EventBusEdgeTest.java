@@ -137,4 +137,25 @@ class EventBusEdgeTest {
 
         assertThat(dispatched).as("internal events do not re-enter the hook").containsExactly("app/event");
     }
+
+    @Test
+    void disposingOneDuplicateRegistrationShouldKeepTheOther() {
+        Context root = Context.create();
+        AtomicInteger calls = new AtomicInteger();
+        io.jcordis.core.event.EventHandler listener = (thisArg, args) -> {
+            calls.incrementAndGet();
+            return null;
+        };
+        io.jcordis.core.util.Disposable first = root.on("app/dup", listener);
+        root.on("app/dup", listener);
+
+        root.events().emit(root, "app/dup");
+        assertThat(calls).hasValue(2);
+
+        // one disposable removes exactly one registration — the second
+        // registration stays alive (mirrors Cordis's findIndex + splice)
+        first.dispose();
+        root.events().emit(root, "app/dup");
+        assertThat(calls).hasValue(3);
+    }
 }

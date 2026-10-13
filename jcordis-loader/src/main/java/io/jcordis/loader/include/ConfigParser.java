@@ -54,6 +54,12 @@ public interface ConfigParser {
             if (Boolean.TRUE.equals(entry.group) && entry.config instanceof List<?> list) {
                 List<EntryOptions> children = new java.util.ArrayList<>();
                 for (Object item : list) {
+                    if (item == null) {
+                        // skip null items (a `- ` blank line): carrying them on
+                        // would surface as an NPE far from the file (the
+                        // top-level path already skips them)
+                        continue;
+                    }
                     if (item instanceof EntryOptions child) {
                         children.add(child);
                     } else {

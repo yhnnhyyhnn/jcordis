@@ -106,7 +106,7 @@ public final class EventBus {
             return (Disposable) result;
         }
         List<Hook> target = hooks.computeIfAbsent(name, key -> new CopyOnWriteArrayList<>());
-        return register(ctx, target, listener, options, "ctx.on(\"" + name + "\")");
+        return register(ctx, name, target, listener, options, "ctx.on(\"" + name + "\")");
     }
 
     public Disposable once(Context ctx, String name, EventHandler listener) {
@@ -115,10 +115,14 @@ public final class EventBus {
 
     public Disposable once(Context ctx, String name, EventHandler listener, EventOptions options) {
         AtomicReference<Disposable> ref = new AtomicReference<>();
+        AtomicBoolean armed = new AtomicBoolean(true);
         Disposable wrapper = on(
                 ctx,
                 name,
                 (thisArg, args) -> {
+                    // CAS guards the double-dispatch window: two threads
+                    // emitting the same event must run the listener once
+                    if (!armed.compareAndSet(true, false)) return null;
                     Disposable disposable = ref.get();
                     if (disposable != null) {
                         disposable.dispose();
@@ -131,7 +135,7 @@ public final class EventBus {
     }
 
     private Disposable register(
-            Context ctx, List<Hook> target, EventHandler listener, EventOptions options, String label) {
+            Context ctx, String name, List<Hook> target, EventHandler listener, EventOptions options, String label) {
         return ctx.fiber()
                 .effect(
                         runner -> {
@@ -140,15 +144,26 @@ public final class EventBus {
                             } else {
                                 target.add(new Hook(ctx, listener, false, options.global()));
                             }
-                            return EffectResult.of(() -> unregister(target, listener));
+                            return EffectResult.of(() -> unregister(name, target, listener));
                         },
                         label);
     }
 
-    private boolean unregister(List<Hook> target, EventHandler callback) {
-        // CopyOnWriteArrayList.removeIf is internally locked and atomic — a
-        // manual index-based remove races concurrent removals (IndexOutOfBounds)
-        return target.removeIf(hook -> hook.callback() == callback);
+    private boolean unregister(String name, List<Hook> target, EventHandler callback) {
+        // one disposable removes one registration: a listener registered twice
+        // owns two disposables, and each must only remove its own slot
+        // (mirrors Cordis's findIndex + splice). The one-shot latch inside the
+        // atomically-locked removeIf keeps concurrent unregisters safe.
+        AtomicBoolean firstMatch = new AtomicBoolean(true);
+        boolean removed = target.removeIf(hook -> hook.callback() == callback && firstMatch.compareAndSet(true, false));
+        if (removed && target.isEmpty()) {
+            // drop empty lists so dynamically named events do not accumulate
+            // in the hook table (mirrors Cordis's `delete this._hooks[name]`);
+            // the remove(key, value) form keeps a concurrent re-registration
+            // of the same name intact
+            hooks.remove(name, target);
+        }
+        return removed;
     }
 
     // ----- dispatch -----

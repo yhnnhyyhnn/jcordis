@@ -101,6 +101,14 @@ public final class FiberImpl implements Fiber {
     public FiberImpl(Context parent, Object config, Map<String, Object> inject, PluginRuntime runtime) {
         this.parent = (FiberImpl) parent.fiber();
         this.ctx = parent.child(this);
+        // non-null inject configs become the fiber's intercept layer, so the
+        // injected services' resolveConfig sees them (mirrors Cordis writing
+        // them into the fiber context's intercept table)
+        for (Map.Entry<String, Object> entry : inject.entrySet()) {
+            if (entry.getValue() != null) {
+                this.ctx = this.ctx.intercept(entry.getKey(), entry.getValue());
+            }
+        }
         this.name = null;
         this.runtime = runtime;
         this.config = config;
@@ -265,7 +273,10 @@ public final class FiberImpl implements Fiber {
     /**
      * Snapshots the registered effects under the lock, then disposes them in
      * reverse order <em>outside</em> the lock — user callbacks are never
-     * invoked while the monitor is held.
+     * invoked while the monitor is held. One throwing dispose must not abort
+     * the rest: every failure is logged and the chain continues, so no fiber
+     * is left half-disposed with live hooks (mirrors Cordis's per-item catch
+     * in {@code _unload}).
      */
     private void drainEffects() {
         List<Disposable> snapshot;
@@ -275,7 +286,11 @@ public final class FiberImpl implements Fiber {
             effectMetas.clear();
         }
         for (int i = snapshot.size() - 1; i >= 0; i--) {
-            snapshot.get(i).dispose();
+            try {
+                snapshot.get(i).dispose();
+            } catch (RuntimeException e) {
+                ctx.logger().error(e);
+            }
         }
     }
 
@@ -622,11 +637,13 @@ public final class FiberImpl implements Fiber {
 
     @Override
     public CompletableFuture<Void> disposeAsync() {
+        // disposal runs synchronously on the calling thread (mirrors Cordis):
+        // routing it through ForkJoinPool.commonPool made nested deletes block
+        // on pool workers that may all be busy, deadlocking cascaded teardown
         if (runtime == null) {
-            return CompletableFuture.runAsync(() -> {
-                if (!disposed.compareAndSet(false, true)) return;
+            RuntimeException failure = null;
+            if (disposed.compareAndSet(false, true)) {
                 transitionState(FiberState.UNLOADING);
-                RuntimeException failure = null;
                 List<Disposable> snapshot;
                 synchronized (lifecycle) {
                     snapshot = new ArrayList<>(disposables);
@@ -641,13 +658,12 @@ public final class FiberImpl implements Fiber {
                     }
                 }
                 transitionState(FiberState.DISPOSED);
-                if (failure != null) throw failure;
-            });
+            }
+            return failure != null ? CompletableFuture.failedFuture(failure) : CompletableFuture.completedFuture(null);
         }
-        return CompletableFuture.runAsync(() -> {
-            // the plugin lifecycle was registered as an effect on the parent
-            // fiber; dispose it by running the collected disposables
-            unload();
-        });
+        // the plugin lifecycle was registered as an effect on the parent
+        // fiber; dispose it by running the collected disposables
+        unload();
+        return CompletableFuture.completedFuture(null);
     }
 }

@@ -69,10 +69,12 @@ class LoggerFormatTest {
     }
 
     @Test
-    void throwableAsFirstArgumentShouldContributeItsMessage() {
+    void throwableAsFirstArgumentShouldContributeItsStack() {
         String rendered = Logger.format(exporter(0, 10240), message("app", new IllegalStateException("boom")));
 
-        assertThat(rendered).isEqualTo("boom");
+        // the exception class and stack travel with the message — a bare
+        // "boom" loses everything needed to debug (mirrors Cordis's stack)
+        assertThat(rendered).startsWith("java.lang.IllegalStateException: boom").contains("\n    at ");
     }
 
     @Test

@@ -45,21 +45,22 @@ class LoggerTest {
     @Test
     void keepsBoundedBuffer() {
         Context ctx = Context.create();
-        List<Message> buffer = ctx.loggerService().buffer();
+        java.util.function.Supplier<List<String>> logged = () -> ctx.loggerService().buffer().stream()
+                .map(m -> String.valueOf(m.args()[0]))
+                .toList();
         ctx.loggerService().setBufferSize(2);
         ctx.logger().info("one");
         ctx.logger().info("two");
         ctx.logger().info("three");
-        assertThat(buffer).isSameAs(ctx.loggerService().buffer());
-        assertThat(buffer.stream().map(m -> m.args()[0]).toList()).containsExactly("two", "three");
+        assertThat(logged.get()).containsExactly("two", "three");
 
         ctx.loggerService().setBufferSize(1);
         ctx.logger().info("four");
-        assertThat(buffer.stream().map(m -> m.args()[0]).toList()).containsExactly("four");
+        assertThat(logged.get()).containsExactly("four");
 
         ctx.loggerService().setBufferSize(0);
         ctx.logger().info("five");
-        assertThat(buffer).isEmpty();
+        assertThat(logged.get()).isEmpty();
     }
 
     @Test

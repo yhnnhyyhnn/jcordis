@@ -45,6 +45,9 @@ public final class ReflectService {
 
     public <T> void set(ServiceKey<T> key, T value) {
         Impl impl = store.get(key);
+        if (impl == null) {
+            throw new IllegalStateException("cannot set property \"" + key.name() + "\" without provide");
+        }
         store.put(key, new Impl(impl.name(), value, impl.fiber(), impl.check()));
     }
 
@@ -129,7 +132,14 @@ public final class ReflectService {
         }
         for (String name : names) {
             Impl impl = getImpl(name, false, source);
-            source.events().emit(source, "internal/service", name, impl == null ? null : impl.value());
+            // only listeners in the same isolation realm see the event: emit
+            // through a per-name filter thisArg instead of the bare context
+            // (mirrors Cordis's `[symbols.filter]` wrapper — a plain context
+            // bypasses thisArg filtering and leaks across realms)
+            final String serviceName = name;
+            io.jcordis.core.event.EventFilter filter = target ->
+                    Objects.equals(((Context) target).isolateKey(serviceName), source.isolateKey(serviceName));
+            source.events().emit(filter, "internal/service", serviceName, impl == null ? null : impl.value());
         }
     }
 

@@ -67,11 +67,20 @@ public final class EntryGroup {
         data.addAll(config);
         java.util.Map<String, EntryOptions> oldMap = new java.util.HashMap<>();
         for (EntryOptions options : oldConfig) {
-            oldMap.put(options.id, options);
+            if (options.id != null) {
+                oldMap.put(options.id, options);
+            }
         }
+        // each anonymous entry gets its own slot (mirrors Cordis's per-entry
+        // Symbol keys) — a shared "anonymous" sentinel would fold them into one
         java.util.Map<String, EntryOptions> newMap = new java.util.LinkedHashMap<>();
+        java.util.List<EntryOptions> anonymous = new java.util.ArrayList<>();
         for (EntryOptions options : config) {
-            newMap.put(options.id != null ? options.id : "anonymous", options);
+            if (options.id != null) {
+                newMap.put(options.id, options);
+            } else {
+                anonymous.add(options);
+            }
         }
         // insertion-ordered union (old keys first, then new) — mirrors the
         // reference's {@code {...oldMap, ...newMap}} key order
@@ -97,6 +106,14 @@ public final class EntryGroup {
                 }
             } else {
                 remove(id);
+            }
+        }
+        for (EntryOptions options : anonymous) {
+            try {
+                create(options);
+            } catch (RuntimeException | Error error) {
+                Context logger = tree.loader() != null ? tree.loader().ctx() : tree.treeContext();
+                logger.logger("loader").error(error);
             }
         }
     }

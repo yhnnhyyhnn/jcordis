@@ -355,6 +355,17 @@ public final class Journal {
                 conflicts.add(new Conflict(id, "key \"" + key + "\" modified both in file and at runtime"));
                 record.changes.remove(key);
             }
+            // the file and the runtime moved the entry into different groups:
+            // the file wins — drop the runtime relocation and report it (a kept
+            // record would tear the entry out of its new file group on the next
+            // write-back, silently reverting the user's edit)
+            if (record.hasParent
+                    && !Objects.equals(record.parent, now.parent)
+                    && before != null
+                    && !Objects.equals(before.parent, now.parent)) {
+                conflicts.add(new Conflict(id, "moved both in file and at runtime"));
+                record.hasParent = false;
+            }
             boolean moved = record.hasParent && !Objects.equals(record.parent, now.parent);
             if (record.changes.isEmpty() && !moved) {
                 resolved.add(id);

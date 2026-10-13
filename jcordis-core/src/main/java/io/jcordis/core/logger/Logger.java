@@ -57,7 +57,9 @@ public final class Logger {
             hash |= 0;
         }
         int[] palette = level >= 2 ? C256 : C16;
-        return palette[Math.abs(hash) % palette.length];
+        // Math.abs(Integer.MIN_VALUE) is negative in Java (unlike JS) — mask
+        // into a non-negative int before indexing
+        return palette[(hash & 0x7fffffff) % palette.length];
     }
 
     /** Formats a message's args with {@code %s}/{@code %d}/{@code %o} placeholders. */
@@ -68,7 +70,10 @@ public final class Logger {
         java.util.List<Object> remaining = new java.util.ArrayList<>(java.util.Arrays.asList(args));
         Object first = remaining.isEmpty() ? null : remaining.get(0);
         if (first instanceof Throwable error) {
-            remaining.set(0, error.getMessage());
+            // log the stack (and the full cause chain, with AggregateError
+            // members) — a bare message loses everything needed to debug the
+            // failure (mirrors Cordis's `args[0].stack || message`)
+            remaining.set(0, stackOf(error));
             remaining.add(0, "%s");
         } else if (!(first instanceof String)) {
             remaining.add(0, "%o");
@@ -109,6 +114,31 @@ public final class Logger {
         String apply(Object value, Exporter exporter, Message message);
     }
 
+    /** Renders a throwable with its stack, cause chain and AggregateError members. */
+    private static String stackOf(Throwable error) {
+        StringBuilder sb = new StringBuilder();
+        renderThrowable(sb, error, java.util.Collections.newSetFromMap(new java.util.IdentityHashMap<>()));
+        return sb.toString();
+    }
+
+    private static void renderThrowable(StringBuilder sb, Throwable error, java.util.Set<Throwable> seen) {
+        if (error == null || !seen.add(error)) return;
+        sb.append(error);
+        for (StackTraceElement element : error.getStackTrace()) {
+            sb.append("\n    at ").append(element);
+        }
+        if (error instanceof io.jcordis.core.event.AggregateError aggregate) {
+            for (Throwable inner : aggregate.errors()) {
+                sb.append("\n  [parallel] ");
+                renderThrowable(sb, inner, seen);
+            }
+        }
+        if (error.getCause() != null) {
+            sb.append("\nCaused by: ");
+            renderThrowable(sb, error.getCause(), seen);
+        }
+    }
+
     /**
      * Formatting strategies keyed by placeholder letter (strategy registry,
      * mirrors Cordis's {@code defaultFormatters}).
@@ -118,11 +148,24 @@ public final class Logger {
     private static java.util.Map<String, Formatter> buildFormatters() {
         java.util.Map<String, Formatter> formatters = new java.util.HashMap<>();
         formatters.put("s", (value, exporter, message) -> String.valueOf(value));
-        Formatter number =
-                (value, exporter, message) -> String.valueOf((long) Double.parseDouble(String.valueOf(value)));
+        // non-numeric input must not make the logging call itself throw —
+        // render NaN like Cordis does (mirrors JS Number coercion)
+        Formatter number = (value, exporter, message) -> {
+            try {
+                return String.valueOf((long) Double.parseDouble(String.valueOf(value)));
+            } catch (NumberFormatException e) {
+                return "NaN";
+            }
+        };
         formatters.put("d", number);
         formatters.put("i", number);
-        formatters.put("f", (value, exporter, message) -> String.valueOf(Double.parseDouble(String.valueOf(value))));
+        formatters.put("f", (value, exporter, message) -> {
+            try {
+                return String.valueOf(Double.parseDouble(String.valueOf(value)));
+            } catch (NumberFormatException e) {
+                return "NaN";
+            }
+        });
         Formatter object = (value, exporter, message) -> value == null ? "null" : String.valueOf(value);
         formatters.put("o", object);
         formatters.put("O", object);

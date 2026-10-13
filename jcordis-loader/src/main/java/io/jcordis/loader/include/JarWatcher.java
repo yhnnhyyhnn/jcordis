@@ -51,6 +51,11 @@ public final class JarWatcher implements Runnable {
             });
     /** In-flight or queued retries, tracked so stop() can wait for them. */
     private final AtomicInteger pendingRetries = new AtomicInteger();
+    /** Retries spent per jar since its last change/success, keyed by file name. */
+    private final java.util.concurrent.ConcurrentMap<String, Integer> retryCounts =
+            new java.util.concurrent.ConcurrentHashMap<>();
+    /** Retry budget per file change — the next watch event re-arms it. */
+    private static final int MAX_RETRIES_PER_CHANGE = 10;
 
     public JarWatcher(Loader loader, Path dir) {
         this.loader = loader;
@@ -163,6 +168,8 @@ public final class JarWatcher implements Runnable {
             return;
         }
         if (Objects.equals(hash, fingerprints.get(name))) return;
+        // a fresh change event re-arms the retry budget for this file
+        retryCounts.remove(file);
         try {
             if (loader.modules.containsKey(name)) {
                 loader.replaceJar(jar, name);
@@ -170,6 +177,7 @@ public final class JarWatcher implements Runnable {
                 loader.loadJar(jar, name);
             }
             fingerprints.put(name, hash);
+            retryCounts.remove(file);
             loader.ctx().events().emit((Object) null, "hmr/reload", name);
         } catch (RuntimeException | Error e) {
             loader.ctx().logger("loader").error("plugin hot-reload failed for " + name + ": " + e.getMessage());
@@ -180,8 +188,17 @@ public final class JarWatcher implements Runnable {
     /**
      * Re-checks a jar shortly after a failed read or replace, covering the
      * window where a watch event fires before the file was fully written.
+     * A jar that keeps failing is retried at most a bounded number of times
+     * (the file's next change re-arms it): a permanently broken jar would
+     * otherwise spin a 200ms hash-read-and-fail loop forever.
      */
     private void scheduleRetry(String file) {
+        if (retryCounts.merge(file, 1, Integer::sum) > MAX_RETRIES_PER_CHANGE) {
+            loader.ctx()
+                    .logger("loader")
+                    .warn("plugin hot-reload for " + file + " kept failing; giving up until the file changes again");
+            return;
+        }
         pendingRetries.incrementAndGet();
         java.util.concurrent.CompletableFuture<Void> future = java.util.concurrent.CompletableFuture.runAsync(
                 () -> {

@@ -50,7 +50,11 @@ public final class LoggerService {
     }
 
     public List<Message> buffer() {
-        return buffer;
+        // a snapshot, not the live list: concurrent logging mutates it under
+        // bufferLock, and an external iteration would otherwise throw CME
+        synchronized (bufferLock) {
+            return List.copyOf(buffer);
+        }
     }
 
     public int bufferSize() {

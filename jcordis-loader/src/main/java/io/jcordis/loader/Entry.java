@@ -25,6 +25,16 @@ public final class Entry {
     public volatile Fiber fiber;
     public volatile boolean loaded;
 
+    /**
+     * Whether {@link #init()} is currently running on this entry. A tree
+     * update that re-enters while the entry is still initializing is ignored
+     * — the outer init owns it (an include's initial re-apply walks the whole
+     * root tree and would otherwise construct a second plugin instance, or
+     * recurse without bound; mirrors Cordis guarding concurrent inits with
+     * {@code _initTask}).
+     */
+    private volatile boolean initializing;
+
     /** Pending initialization task (entries load synchronously, so usually null). */
     public volatile Object _initTask;
 
@@ -66,6 +76,10 @@ public final class Entry {
 
     /** Applies new options, reinitializing or updating the fiber as needed. */
     public void update(EntryOptions source, boolean create, boolean force) {
+        if (initializing) {
+            // re-entrant update during init: the outer init owns this entry
+            return;
+        }
         // capture the config before it is overwritten so a restart-on-change
         // comparison can detect actual differences (copyInto assigns the same
         // reference to both fields, making a post-copy comparison tautological)
@@ -206,49 +220,54 @@ public final class Entry {
 
     private void init() {
         if (disabled()) return;
-        rebuildCtx();
-        Plugin plugin = tree.importPlugin(options.name);
-        // a group entry is either declared `group: true` or resolves to the
-        // group plugin itself (identity check, mirroring Cordis's
-        // `plugin[EntryGroup.key]` marker — not a name match)
-        boolean isGroup = Boolean.TRUE.equals(options.group) || plugin == Loader.GROUP_PLUGIN;
-        if (isGroup) {
-            plugin = Loader.GROUP_PLUGIN;
-        }
-        if (plugin == null) {
-            tree.loader().ctx().logger().error("cannot resolve plugin " + options.name);
-            return;
-        }
-        tree.loader().showLog(this, "apply");
-        Fiber f =
-                ctx.registry().plugin(ctx, plugin, resolveConfig(), options.inject != null ? options.inject : Map.of());
-        f.setEntry(this);
-        fiber = f;
-        if (isGroup) {
-            if (subgroup != null) {
-                subgroup.disposeAll();
+        initializing = true;
+        try {
+            rebuildCtx();
+            Plugin plugin = tree.importPlugin(options.name);
+            // a group entry is either declared `group: true` or resolves to the
+            // group plugin itself (identity check, mirroring Cordis's
+            // `plugin[EntryGroup.key]` marker — not a name match)
+            boolean isGroup = Boolean.TRUE.equals(options.group) || plugin == Loader.GROUP_PLUGIN;
+            if (isGroup) {
+                plugin = Loader.GROUP_PLUGIN;
             }
-            subgroup = null;
-            subtree = null;
-            initGroupInternal();
-            // stop the subgroup when the group fiber is disposed
-            f.effect(
-                    runner -> io.jcordis.core.fiber.EffectResult.of(() -> {
-                        if (subgroup != null) {
-                            subgroup.stop();
-                        }
-                    }),
-                    "group.dispose()");
-        }
-        loaded = true;
-        // mirror Cordis's Entry.init tail: once the fiber's async load work
-        // settles (and no other task is pending), re-notify 'loader' so
-        // dependents gated by the await config are re-checked
-        f.await().whenComplete((ignored, error) -> {
-            if (tree.getTasks().isEmpty()) {
-                ctx.reflect().notify(java.util.List.of("loader"), ctx);
+            if (plugin == null) {
+                tree.loader().ctx().logger().error("cannot resolve plugin " + options.name);
+                return;
             }
-        });
+            tree.loader().showLog(this, "apply");
+            Fiber f = ctx.registry()
+                    .plugin(ctx, plugin, resolveConfig(), options.inject != null ? options.inject : Map.of());
+            f.setEntry(this);
+            fiber = f;
+            if (isGroup) {
+                if (subgroup != null) {
+                    subgroup.disposeAll();
+                }
+                subgroup = null;
+                subtree = null;
+                initGroupInternal();
+                // stop the subgroup when the group fiber is disposed
+                f.effect(
+                        runner -> io.jcordis.core.fiber.EffectResult.of(() -> {
+                            if (subgroup != null) {
+                                subgroup.stop();
+                            }
+                        }),
+                        "group.dispose()");
+            }
+            loaded = true;
+            // mirror Cordis's Entry.init tail: once the fiber's async load work
+            // settles (and no other task is pending), re-notify 'loader' so
+            // dependents gated by the await config are re-checked
+            f.await().whenComplete((ignored, error) -> {
+                if (tree.getTasks().isEmpty()) {
+                    ctx.reflect().notify(java.util.List.of("loader"), ctx);
+                }
+            });
+        } finally {
+            initializing = false;
+        }
     }
 
     /** Initializes the subgroup of a group entry (called by the group plugin). */

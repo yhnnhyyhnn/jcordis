@@ -1,8 +1,5 @@
 package io.jcordis.loader.include;
 
-import com.fasterxml.jackson.core.type.TypeReference;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;
 import io.jcordis.core.context.Context;
 import io.jcordis.core.event.EventOptions;
 import io.jcordis.core.fiber.EffectResult;
@@ -46,8 +43,6 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * removed automatically when its {@code ctx.effect} owner is torn down.
  */
 public final class Hmr implements Runnable {
-
-    private static final ObjectMapper YAML = new ObjectMapper(new YAMLFactory());
 
     private final Context ctx;
     private final Loader loader;
@@ -200,7 +195,10 @@ public final class Hmr implements Runnable {
 
     private List<EntryOptions> readConfig() throws IOException {
         String content = Files.readString(configPath, StandardCharsets.UTF_8);
-        return YAML.readValue(content, new TypeReference<List<EntryOptions>>() {});
+        // parse through the shared ConfigParser: raw Jackson typing leaves
+        // nested group configs as maps, which the tree would silently drop
+        // (mirrors the Include path)
+        return ConfigParser.forPath(configPath.toString()).read(content);
     }
 
     private static FileTime modificationTime(Path path) {

@@ -37,8 +37,8 @@
 | `Promise`/`async` 插件体 | `CompletableFuture`（同步插件体 + 可选异步 init） | Java 并发模型 |
 | 异步效应收集 | 完成时收集 disposable；fiber 已销毁则**立即处置**（不泄漏，`async return 2`）；销毁后失败忽略（保持 DISPOSED） | 同参考语义，经 per-fiber Monitor 锁实现 |
 | `hmr.watch(path, callback)`（chokidar 递归监视 + async 回调） | `Hmr.watch(Path, Runnable)`（轮询；文件比 `FileTime`，**目录比整棵树的指纹**（相对名 + mtime + size），多回调/路径，`ctx.effect` 注销） | Java 无 chokidar；jar 目录另由 `JarWatcher` 的 WatchService 负责 |
-| `Include` 通过 `ctx.hmr.watch(filename, refresh)` 自治重载 | 同（`Include.refresh()` + `Hmr.watch`，同路径去重） | 参考 cacab04e；`Hmr` 注册为 `hmr` 服务供发现 |
-| `EntryTree.commit(EntryChange)` 结构化变更 + `Include` journal 双向同步 | 同：`EntryChange`（id/group/from/options/legacy）+ root tree 监听器 + `Journal`（record/merge/diff/apply/reconcile）；运行时变更（禁用/改配置）写回文件，文件编辑经 reconcile 后**文件优先** | jcordis 的 `Include` 不是独立 `EntryTree` 子树，而是共享 loader 根树，故以“文件拥有的 id / 文件 group 内的 id”做归属过滤；**文件外的运行时新建条目不回写**（保守差异） |
+| `Include` 通过 `ctx.hmr.watch(filename, refresh)` 自治重载 | 同（`Include.refresh()` + `Hmr.watch`；**每个 include 各自注册回调并随销毁注销**，refresh 带 disposed 守卫） | 参考 cacab04e；`Hmr` 注册为 `hmr` 服务供发现（`ctx.get("hmr")` 一次性查询，晚于 include 启动的 hmr 不可见——cordis 的 inject 是响应式，此项未对齐） |
+| `EntryTree.commit(EntryChange)` 结构化变更 + `Include` journal 双向同步 | 同：`EntryChange`（id/group/from/options/legacy）+ root tree 监听器 + `Journal`（record/merge/diff/apply/reconcile，含 moved-both 冲突）；运行时变更（禁用/改配置）写回文件（**snapshot/swap**，并发记录不丢），文件编辑经 reconcile 后**文件优先**；`internal/update` 钩子 fiber-local | jcordis 的 `Include` 不是独立 `EntryTree` 子树，而是共享 loader 根树：re-apply 前把 root data 中**不属于文件的条目并入 diff**（等价子树 diff 语义，外部条目与 include 自身存活）；文件外的运行时新建条目不回写（保守差异） |
 | `hmr` 三阶段部分重载（per-fiber drain、accepted/declined 依赖图分析） | `Loader.replaceJar` 三阶段：**验证**（全有或全无）→ **卸载**（本轮 entry 先全部 dispose + per-fiber drain）→ **重载**（逐 entry，祖先已在轮则跳过，失败隔离不回滚） | Java 无 ESM 模块图：**jar 即原子重载单元**，故不做 accepted/declined 依赖图分析（参考的“部分”以 vite 模块粒度）；其余三阶段语义已对齐 |
 | `inspect(ctx)` → `Context <name>` | `ctx.toString()` | 无 util.inspect |
 | `Service[resolveConfig]`（intercept 链合并 base/head） | `Service.resolveConfig(base, head)` 方法 | Java 方法调用 |
@@ -82,3 +82,16 @@
 | `Map.of("x", null)` | JS 允许 null 值 | Java 禁止 → 测试用 `inject(...)` 辅助 | 仅测试代码 |
 | fiber dispose 后 uid | `null` | `-1` | 类型差异 |
 | 时间戳 | `Date.now()` | `System.currentTimeMillis()` | 等价 |
+
+## 五、审查遗留（2026-10-13 全库审查发现、暂不修复的项）
+
+| 项 | cordis 行为 | jcordis 现状 | 不修原因 |
+|---|---|---|---|
+| `registry.delete` 阻塞 | 不阻塞（异步 dispose） | `delete()` 逐 fiber `join()` | 调用方遍布同步 join 语义；改为异步是破坏性 API 变更，需单独立项 |
+| `Service.resolveConfig` 多配置合并 | `Object.assign` 合并任意对象形状 | 仅合并 `Map`，POJO/String 配置被跳过 | Java 无属性展开；消费方目前只用 Map，POJO 合并语义需先定义 |
+| PENDING fiber 取 injected 服务 | 依赖在 inject 中且不可得 → 抛错 | 返回 `null` | 行为变更会波及所有 inject 用法，需评估现有插件容忍度 |
+| `EntryOptions.merge` 的 null 清除 | update 传 null 即删除字段 | null 被忽略，旧值残留 | 现有调用链（legacy 快照等）依赖“null=不动”语义，改动有数据迁移风险 |
+| 文件驱动 update 的 force | `entry.update(options, true, true)`（force） | `force=false`（仅 config/isolate 变化才重启） | force=true 会让 Include 幂等 refresh 变成全量重启；intercept 文件修改暂不生效（记为已知限制） |
+| `Entry.id()` 前缀守卫 | 无条件父前缀 | 组内同 id 时跳过前缀 | 触发面极窄（显式同 id 嵌套） |
+| `ctx.mixin` | accessor 机制 | 死代码（只写标记不读取） | 未实现功能，按增强项立项而非缺陷 |
+| `ServiceKey.of(name)` CANONICAL 表 | canonical key 属于每棵 context 树 | 全 JVM 静态累积 | 动态服务名场景才会增长，常驻进程影响可忽略 |

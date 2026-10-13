@@ -173,4 +173,64 @@ class HmrTest {
         assertThat(Boolean.TRUE.equals(loader.store.get("sample").options.disabled))
                 .isEqualTo(afterDispose);
     }
+
+    @Test
+    void loadsGroupChildrenFromTheConfigFile() throws IOException {
+        Path configPath = tempDir.resolve("grouped.yml");
+        Files.writeString(
+                configPath,
+                """
+                - id: group
+                  name: group-plugin
+                  group: true
+                  config:
+                    - id: inner
+                      name: sample-plugin
+                      config:
+                        value: nested
+                """,
+                StandardCharsets.UTF_8);
+        Context root = Context.create();
+        Loader loader = new Loader(root);
+        AtomicInteger innerLoads = new AtomicInteger();
+        loader.mock("group-plugin", (ctx, cfg) -> null);
+        loader.mock("sample-plugin", (ctx, cfg) -> innerLoads.incrementAndGet());
+
+        Hmr hmr = new Hmr(root, loader, Map.of("path", configPath.toString(), "interval", 30));
+        hmr.start();
+        sleep(120);
+
+        // nested group children must load through the convenience path (raw
+        // Jackson typing used to leave them as maps, silently dropped)
+        assertThat(innerLoads).hasValue(1);
+        assertThat(loader.resolve("group:inner")).isNotNull();
+    }
+
+    @Test
+    void loadsEveryAnonymousEntry() throws IOException {
+        Path configPath = tempDir.resolve("anon.yml");
+        Files.writeString(
+                configPath,
+                """
+                - name: sample-plugin
+                  config:
+                    value: a
+                - name: sample-plugin
+                  config:
+                    value: b
+                """,
+                StandardCharsets.UTF_8);
+        Context root = Context.create();
+        Loader loader = new Loader(root);
+        AtomicInteger loads = new AtomicInteger();
+        loader.mock("sample-plugin", (ctx, cfg) -> loads.incrementAndGet());
+
+        Hmr hmr = new Hmr(root, loader, Map.of("path", configPath.toString(), "interval", 30));
+        hmr.start();
+        sleep(120);
+
+        // two anonymous entries must both load (they used to fold into a
+        // single "anonymous" map key)
+        assertThat(loads).hasValue(2);
+    }
 }

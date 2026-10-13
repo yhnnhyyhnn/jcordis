@@ -1,7 +1,6 @@
 package io.jcordis.loader.include;
 
 import io.jcordis.core.context.Context;
-import io.jcordis.core.event.EventOptions;
 import io.jcordis.core.registry.Plugin;
 import io.jcordis.loader.Entry;
 import io.jcordis.loader.EntryChange;
@@ -10,7 +9,6 @@ import io.jcordis.loader.EntryOptions;
 import io.jcordis.loader.EntryTree;
 import io.jcordis.loader.Loader;
 import java.io.IOException;
-import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.NoSuchFileException;
@@ -57,7 +55,8 @@ public class Include implements Plugin {
     private final List<EntryOptions> initial;
     private final List<Map<String, Object>> patches;
 
-    private final Map<String, Journal.Record> journal = new LinkedHashMap<>();
+    /** Written by tree-mutating threads, read/swapped by the draining thread. */
+    private volatile Map<String, Journal.Record> journal = new LinkedHashMap<>();
     /** Ids we assigned to entries the file leaves anonymous. */
     private final Map<String, Anonymous> anonymous = new LinkedHashMap<>();
     /** Ids owned by patches: their changes belong to the patch, not the file. */
@@ -68,7 +67,7 @@ public class Include implements Plugin {
     private boolean dirtyRead;
     private boolean dirtyWrite;
 
-    private Snapshot cache;
+    private volatile Snapshot cache;
     private Loader loader;
     private volatile boolean disposed;
     /** Format strategy for this file (strategy pattern; also converts raw patches). */
@@ -88,23 +87,24 @@ public class Include implements Plugin {
             throw new IllegalStateException("include requires the loader service");
         }
         // a plugin updating the include config (matching `path`) re-applies the
-        // parsed tree (mirrors Cordis's internal/update listener)
-        ctx.on(
-                "internal/update",
-                (thisArg, args) -> {
-                    Object updated = args.length > 0 ? args[0] : null;
-                    if (updated instanceof Map<?, ?> map
-                            && map.get("path") != null
-                            && map.get("path").equals(path.toString())) {
-                        refresh();
-                        return null;
-                    }
-                    if (args.length > 1 && args[1] instanceof java.util.function.Supplier<?> next) {
-                        return next.get();
-                    }
-                    return null;
-                },
-                EventOptions.of(true, true));
+        // parsed tree (mirrors Cordis's internal/update listener). Registered
+        // fiber-locally: only the include plugin's own updates pass through
+        // this hook — an unrelated plugin whose config happens to carry the
+        // same `path` key must not be intercepted (mirrors Cordis's
+        // non-global registration)
+        ctx.on("internal/update", (thisArg, args) -> {
+            Object updated = args.length > 0 ? args[0] : null;
+            if (updated instanceof Map<?, ?> map
+                    && map.get("path") != null
+                    && map.get("path").equals(path.toString())) {
+                refresh();
+                return null;
+            }
+            if (args.length > 1 && args[1] instanceof java.util.function.Supplier<?> next) {
+                return next.get();
+            }
+            return null;
+        });
         try {
             if (!Files.exists(path)) {
                 if (initial == null) {
@@ -125,12 +125,20 @@ public class Include implements Plugin {
         applyTree();
         // if the hmr service is available, let this include own its config file:
         // the file is re-read and re-applied on change (mirrors Cordis's
-        // `ctx.hmr.watch(filename, refresh)`); registrations are de-duplicated
+        // `ctx.hmr.watch(filename, refresh)`). Every include instance registers
+        // its own callback — the watch registry supports several per path, and
+        // de-duplicating would leave a second include on the same path without
+        // a callback of its own
+        io.jcordis.core.util.Disposable watch = null;
         Object hmr = ctx.get("hmr");
-        if (hmr instanceof Hmr instance && !instance.isWatching(path)) {
-            instance.watch(path, this::refresh);
+        if (hmr instanceof Hmr instance) {
+            watch = instance.watch(path, this::refresh);
         }
+        final io.jcordis.core.util.Disposable watchDispose = watch;
         return (io.jcordis.core.util.Disposable) () -> {
+            if (watchDispose != null) {
+                watchDispose.dispose();
+            }
             loader.removeCommitListener(listener);
             stop();
             loader.ctx().registry().delete(this);
@@ -139,6 +147,16 @@ public class Include implements Plugin {
 
     /** Stops the include: flushes pending changes and marks it disposed. */
     public void stop() {
+        if (disposed) return;
+        // one last attempt to reach the file: changes kept in the journal by
+        // earlier failed writes would otherwise be dropped (mirrors Cordis's
+        // stop scheduling a final drain)
+        synchronized (drainLock) {
+            if (!journal.isEmpty()) {
+                dirtyWrite = true;
+            }
+        }
+        drain();
         disposed = true;
         flush();
     }
@@ -146,9 +164,12 @@ public class Include implements Plugin {
     /**
      * Re-reads the config file and re-applies the parsed tree, mirroring
      * Cordis's {@code Include.refresh()}. Registered as an hmr watch when the
-     * service is available, and callable directly.
+     * service is available, and callable directly. A disposed include does
+     * nothing — its watch is gone and re-applying would rewrite the tree with
+     * stale data (mirrors Cordis's {@code _disposed} guard).
      */
     public void refresh() {
+        if (disposed || cache == null) return;
         synchronized (drainLock) {
             dirtyRead = true;
         }
@@ -180,8 +201,8 @@ public class Include implements Plugin {
     private void onCommit(EntryChange change) {
         if (disposed || cache == null) return;
         if (!owns(change.id, change.group)) return;
-        Journal.record(journal, change, groupId(change.group));
         synchronized (drainLock) {
+            Journal.record(journal, change, groupId(change.group));
             dirtyWrite = true;
         }
         drain();
@@ -205,7 +226,9 @@ public class Include implements Plugin {
 
     /** Number of changes waiting to reach the file (diagnostics/tests). */
     public int pendingChanges() {
-        return journal.size();
+        synchronized (drainLock) {
+            return journal.size();
+        }
     }
 
     // ------------------------------------------------------------------ draining
@@ -242,7 +265,14 @@ public class Include implements Plugin {
                         readAndApply();
                     } catch (Throwable error) {
                         warn("failed to apply config file " + path + ": " + error);
-                        // leave `dirtyWrite` untouched: writing needs a known file state
+                        // the consumed write flag was not served (writing needs
+                        // a known file state) — re-arm it so the pending
+                        // journal is not stranded until the next commit
+                        synchronized (drainLock) {
+                            if (!dirtyRead) {
+                                dirtyWrite = write;
+                            }
+                        }
                         if (!dirtyRead) continue;
                     }
                 }
@@ -266,6 +296,7 @@ public class Include implements Plugin {
 
     /** Re-reads the file, reconciles it with the journal and applies it. */
     private void readAndApply() {
+        if (disposed) return;
         String content;
         try {
             content = Files.readString(path, StandardCharsets.UTF_8);
@@ -285,17 +316,19 @@ public class Include implements Plugin {
         }
         assignIds(data);
         if (cache != null) {
-            for (Journal.Conflict conflict :
-                    Journal.reconcile(journal, Journal.flatten(cache.data()), Journal.flatten(data), this::fileOwned)) {
-                error("config conflict in " + path + ": entry " + conflict.id() + " " + conflict.reason()
-                        + "; file wins");
+            synchronized (drainLock) {
+                for (Journal.Conflict conflict : Journal.reconcile(
+                        journal, Journal.flatten(cache.data()), Journal.flatten(data), this::fileOwned)) {
+                    error("config conflict in " + path + ": entry " + conflict.id() + " " + conflict.reason()
+                            + "; file wins");
+                }
             }
         }
         cache = new Snapshot(content, data);
         applyTree();
         // the file changed while tree-side changes were pending: write the merge
-        if (!journal.isEmpty()) {
-            synchronized (drainLock) {
+        synchronized (drainLock) {
+            if (!journal.isEmpty()) {
                 dirtyWrite = true;
             }
         }
@@ -303,7 +336,17 @@ public class Include implements Plugin {
 
     /** Writes the journalled changes back to the file (idempotent). */
     private void writeBack() {
-        if (journal.isEmpty() || cache == null) return;
+        if (cache == null) return;
+        // snapshot and swap: records arriving while we write belong to the
+        // next round, and every failure folds the batch back together with
+        // them — a plain clear() after writing would lose the concurrent
+        // ones (mirrors Cordis's journal swap + restore)
+        Map<String, Journal.Record> batch;
+        synchronized (drainLock) {
+            if (journal.isEmpty()) return;
+            batch = journal;
+            journal = new LinkedHashMap<>();
+        }
         String current;
         try {
             current = Files.readString(path, StandardCharsets.UTF_8);
@@ -311,13 +354,18 @@ public class Include implements Plugin {
             // only a missing file is "unknown state, keep waiting": any other
             // read failure must surface so the caller learns the write never
             // happened (mirrors Cordis #171)
-            warn("config file " + path + " is missing, " + journal.size() + " pending change(s) kept in memory");
+            restore(batch);
+            warn("config file " + path + " is missing, " + batch.size() + " pending change(s) kept in memory");
             return;
         } catch (IOException e) {
-            throw new UncheckedIOException(e);
+            restore(batch);
+            error("failed to write config file " + path + ", " + batch.size() + " pending change(s) kept in memory: "
+                    + e);
+            return;
         }
         if (!current.equals(cache.content())) {
             // someone else wrote the file: merge first, then come back
+            restore(batch);
             synchronized (drainLock) {
                 dirtyRead = true;
                 dirtyWrite = true;
@@ -325,10 +373,9 @@ public class Include implements Plugin {
             return;
         }
         List<EntryOptions> data = copyTree(cache.data());
-        Journal.apply(data, journal, this::fileOwned, this::warn);
+        Journal.apply(data, batch, this::fileOwned, this::warn);
         if (Journal.equalsOptionsList(data, cache.data())) {
             // nothing for the file itself; the tree already reflects the change
-            journal.clear();
             return;
         }
         String text;
@@ -336,12 +383,26 @@ public class Include implements Plugin {
             text = dump(data);
             writeText(text);
         } catch (IOException e) {
-            warn("failed to write config file " + path + ", " + journal.size() + " pending change(s) kept in memory: "
+            restore(batch);
+            error("failed to write config file " + path + ", " + batch.size() + " pending change(s) kept in memory: "
                     + e);
             return;
         }
         cache = new Snapshot(text, data);
-        journal.clear();
+    }
+
+    /**
+     * Folds a written-out batch back into the journal, merging with any
+     * records that arrived in the meantime (all under the drain lock — the
+     * journal is written from arbitrary tree-mutating threads).
+     */
+    private void restore(Map<String, Journal.Record> batch) {
+        synchronized (drainLock) {
+            for (Map.Entry<String, Journal.Record> entry : journal.entrySet()) {
+                batch.merge(entry.getKey(), entry.getValue(), Journal::mergeRecords);
+            }
+            journal = batch;
+        }
     }
 
     // --------------------------------------------------------------- tree application
@@ -350,8 +411,37 @@ public class Include implements Plugin {
     private void applyTree() {
         List<EntryOptions> tree = copyTree(cache.data());
         applyPatches(tree);
-        Journal.apply(tree, journal, this::fileOwned, this::warn);
+        synchronized (drainLock) {
+            Journal.apply(tree, journal, this::fileOwned, this::warn);
+        }
+        // entries this file does not own live outside it: carrying them into
+        // the re-apply keeps the diff from removing them (mirrors Cordis,
+        // where the include's read only diffs its own subtree — the shared
+        // root tree here would otherwise treat every foreign entry as deleted)
+        Set<String> owned = new HashSet<>();
+        collectIds(tree, owned);
+        for (EntryOptions options : List.copyOf(loader.root.data)) {
+            if (options.id == null || !owned.contains(options.id)) {
+                tree.add(options);
+            }
+        }
         loader.read(tree);
+    }
+
+    /** Recursively collects the ids of a file tree (groups include their children). */
+    private static void collectIds(List<EntryOptions> tree, Set<String> ids) {
+        for (EntryOptions options : tree) {
+            if (options.id != null) {
+                ids.add(options.id);
+            }
+            if (Boolean.TRUE.equals(options.group) && options.config instanceof List<?> nested) {
+                List<EntryOptions> children = new ArrayList<>();
+                for (Object item : nested) {
+                    if (item instanceof EntryOptions child) children.add(child);
+                }
+                collectIds(children, ids);
+            }
+        }
     }
 
     /** Whether the file owns a change, mirroring Cordis's {@code PatchIndex.fileOwned}. */

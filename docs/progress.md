@@ -1546,3 +1546,46 @@ Tests run: 352, Failures: 0（337 → 352）
 Reactor: 11/11 模块 SUCCESS, BUILD SUCCESS
 mvn -Pformat spotless:check -- BUILD SUCCESS
 ```
+
+## 缺陷修复专项:全库审查 30 项缺陷,修复 22 项(2026-10-13)
+
+三路审查(Include/fiber 链路实证深挖 + core/loader 两个逐行审查代理,以 cordis 为基准)发现 30 项缺陷,本轮修复 22 项;其余 8 项为行为敏感或影响极低,记录于 compatibility.md 待议。
+
+### Include/HMR 一族(实证复现)
+
+1. **误拦截无关插件**:`internal/update` 监听器此前 global+prepend 注册在全局链最前——任何插件 config 含相同 `path` 键的 Map 一经 update 即被匹配短路,该插件的重启被吞(cordis 为 fiber-local)。改为默认注册(经 EventBus 拦截器入 fiber 钩子,随 fiber 处置)
+2. **文件驱动 re-apply 删除不拥有的条目**:`applyTree` 直接 `loader.read(文件内容)`,共享根树的 diff 把文件外条目(含 include 条目自己)当"已删除"移除——include 每次加载都把自己变成孤儿 fiber(监听器/journal/HMR watch 全泄漏)。修复:re-apply 前把 root data 中不属于文件的条目并入 diff 列表(等价 cordis 子树 diff 语义)
+3. **初始化重入递归**:上述修复首次暴露 include 初始化期间的重入会构造第二个插件实例(StackOverflowError)。`Entry.initializing` 守卫:初始化进行中的条目忽略重入 update(等价 cordis `_initTask` 防并发 init)
+4. **销毁不注销 HMR watch + 僵尸 refresh**:watch 的 Disposable 此前被丢弃,`refresh` 无 disposed 守卫——include 卸载后文件变更仍会重写整棵树。现在销毁回调注销 watch;`refresh/readAndApply` 带 disposed 守卫;同路径的每个 include 各自注册 watch(去掉有害的 isWatching 去重)
+5. **journal 并发与丢变更**:`journal` 由任意树变更线程写入、HMR 轮询线程迭代,无同步;写回成功路径 `journal.clear()` 会把期间到达的记录一并清除。修复:全部访问纳入 drainLock;写回改 **snapshot/swap**(批次换出、失败折叠恢复、期间新增留给下一轮,对齐 cordis)
+6. **`Include.stop` 不冲刷**:停止前对 journal 做最后一次写尝试(对齐 cordis)
+7. **Hmr 便捷路径丢 group 子条目**:`readConfig` 裸 Jackson 反序列化,group config 是原始 Map,被 `instanceof EntryOptions` 静默过滤。改走 `ConfigParser`(含 normalizeGroups 与 null 过滤)
+8. **reconcile 缺 moved-both 冲突**:文件与运行时同时移动条目时,运行时移动会静默回滚用户的文件编辑。补冲突分支:文件胜出并报告(对齐 cordis journal.ts)
+9. **JarWatcher 无限重试**:永久损坏的 jar 每 200ms 全文件哈希+失败循环。加每变更 10 次重试预算(新 watch 事件重置)
+10. **drain 标志搁浅**:read 失败时已消费的 write 标志被恢复,journal 不再无限期滞留
+
+### core 一族
+
+11. **销毁链中断泄漏**:`drainEffects` 对 dispose 无逐项容错——第一个异常中断整条销毁链,剩余 fiber 永久泄漏(runtime 已移出 registry,再无清理路径)。逐项 catch + 记日志(对齐 cordis `_unload`)
+12. **销毁强制 commonPool 死锁面**:plugin 销毁此前 `runAsync(commonPool)+join`,嵌套/并发级联销毁可线程饥饿。改为调用线程同步执行(cordis 语义)
+13. **`set(ServiceKey)` NPE**:未 provide 的 key 直接 `impl.name()` NPE。抛 "cannot set property ... without provide"
+14. **日志丢堆栈**:Throwable 首参只保留 `getMessage()`。现在渲染类名+堆栈+cause 链+AggregateError 成员(对齐 cordis `error.stack`)
+15. **inject 配置被丢弃**:inject map 的 value 全库无消费点。Fiber 构造把非 null 配置写入 ctx 的 intercept 层(对齐 cordis 写 intercept 表)
+16. **internal/service 跨 realm 泄漏**:emit 的 thisArg 是普通 Context,绕过 thisArg 过滤。改为 per-name EventFilter 包装(对齐 cordis `[symbols.filter]`)
+17. **hooks 空表不删**:动态事件名慢性泄漏。注销后空表删除(对齐 cordis `delete _hooks[name]`)
+18. **匿名条目折叠**:`EntryGroup.update` 用共享 "anonymous" 哨兵键,N 个匿名条目只剩一个。每个匿名条目独立 create(cordis 用唯一 Symbol)
+19. 低风险批次:`once` 并发双触发(CAS 闸门)、同一 listener 双注册注销全删(原子单删)、`%d/%f` 非数字让日志调用抛异常(NaN 容错)、`Math.abs(MIN_VALUE)` 负索引(掩码)、`LoggerService.buffer()` 暴露活列表(快照)、`normalizeGroups` 不过滤 null 子项
+
+### 未修(记录待议,8 项)
+
+`registry.delete` 阻塞 join 的语义(cordis 不阻塞)、`resolveConfig` 多配置合并非 Map 丢弃、PENDING 取服务返回 null(cordis 抛错,行为变更需评估)、`EntryOptions.merge` 无法用 null 清字段(数据迁移风险)、文件驱动 update 的 force 与 intercept 生效、`Entry.id()` 前缀守卫、`mixin` 死代码(未实现功能)、`ServiceKey` CANONICAL 全 JVM 累积。
+
+### 验证
+
+新测试 +6(FiberDisposeChainTest 3、HmrTest 2、EventBusEdgeTest 1)+ 修复前实证变红的 IncludeUpdateScopeTest 2 例;2 个旧断言随行为更新(堆栈渲染、buffer 快照)。
+
+```
+Tests run: 358, Failures: 0（352 → 358）
+Reactor: 11/11 模块 SUCCESS, BUILD SUCCESS
+mvn -Pformat spotless:check -- BUILD SUCCESS
+```
