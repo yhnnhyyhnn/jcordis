@@ -134,6 +134,24 @@ class TimerEdgeTest {
     }
 
     @Test
+    void throttleAfterDisposeShouldNotExecuteEvenOutsideTheWindow() {
+        TimerService timer = new TimerService(Context.create());
+        AtomicInteger calls = new AtomicInteger();
+        TimerService.Timer throttled = timer.throttle(calls::incrementAndGet, 60, false);
+
+        throttled.run();
+        throttled.dispose();
+        sleep(120);
+
+        // the window has elapsed, so the immediate branch would fire without
+        // the disposed check (mirrors Cordis #161)
+        throttled.run();
+
+        assertThat(calls).as("a disposed throttle never runs again").hasValue(1);
+        timer.close();
+    }
+
+    @Test
     void intervalShouldKeepFiringUntilDisposed() {
         TimerService timer = new TimerService(Context.create());
         AtomicInteger calls = new AtomicInteger();

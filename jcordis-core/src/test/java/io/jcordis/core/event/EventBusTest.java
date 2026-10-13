@@ -302,7 +302,7 @@ class EventBusTest {
                 (thisArg, args) -> {
                     seen.add(args[0]);
                     @SuppressWarnings("unchecked")
-                    Supplier<Object> next = (Supplier<Object>) args[2];
+                    Supplier<Object> next = (Supplier<Object>) args[1];
                     return next.get();
                 },
                 EventOptions.of(false, false));

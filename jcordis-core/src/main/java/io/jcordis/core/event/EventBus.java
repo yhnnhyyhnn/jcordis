@@ -36,7 +36,10 @@ public final class EventBus {
 
     public EventBus(Context ctx) {
         // intercepts non-global 'internal/update' registrations and stores the
-        // listener on the fiber that registered it (fiber-local hooks)
+        // listener on the fiber that registered it (fiber-local hooks); the
+        // registration is itself an effect on that fiber, so a reload (which
+        // re-runs the body and re-registers) never accumulates stale hooks
+        // (mirrors Cordis #56)
         on(
                 ctx,
                 "internal/listener",
@@ -45,8 +48,8 @@ public final class EventBus {
                     EventHandler listener = (EventHandler) args[1];
                     EventOptions options = (EventOptions) args[2];
                     if ("internal/update".equals(name) && !options.global()) {
-                        List<EventHandler> fiberHooks = ((Context) thisArg)
-                                .fiber()
+                        Context owner = (Context) thisArg;
+                        List<EventHandler> fiberHooks = owner.fiber()
                                 .hooks()
                                 .computeIfAbsent("internal/update", key -> new CopyOnWriteArrayList<>());
                         if (options.prepend()) {
@@ -54,7 +57,10 @@ public final class EventBus {
                         } else {
                             fiberHooks.add(listener);
                         }
-                        return (Disposable) () -> fiberHooks.remove(listener);
+                        return owner.fiber()
+                                .effect(
+                                        runner -> EffectResult.of(() -> fiberHooks.remove(listener)),
+                                        "ctx.on(\"internal/update\")");
                     }
                     return null;
                 },
@@ -68,12 +74,11 @@ public final class EventBus {
                 (thisArg, args) -> {
                     Fiber fiber = (Fiber) thisArg;
                     Object config = args[0];
-                    boolean noSave = (Boolean) args[1];
                     @SuppressWarnings("unchecked")
-                    Supplier<Object> next = (Supplier<Object>) args[2];
+                    Supplier<Object> next = (Supplier<Object>) args[1];
                     List<EventHandler> callbacks =
                             new ArrayList<>(fiber.hooks().getOrDefault("internal/update", List.of()));
-                    Object[] chainArgs = {config, noSave, null};
+                    Object[] chainArgs = {config, null};
                     Supplier<Object>[] holder = new Supplier[1];
                     holder[0] = () -> {
                         EventHandler callback = callbacks.isEmpty() ? null : callbacks.remove(0);
@@ -82,7 +87,7 @@ public final class EventBus {
                         }
                         return callback.invoke(fiber, chainArgs);
                     };
-                    chainArgs[2] = holder[0];
+                    chainArgs[1] = holder[0];
                     return holder[0].get();
                 },
                 EventOptions.of(true, true));

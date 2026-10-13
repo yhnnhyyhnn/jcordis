@@ -141,10 +141,14 @@ public class TimerService extends Service {
                 }),
                 label);
         Runnable wrapper = () -> {
+            // once disposed, the wrapper must never run its callback again —
+            // not even the immediate branch of a throttle whose window has
+            // elapsed (mirrors Cordis #161)
+            if (isDisposed.get()) return;
             if (pending[0] != null) {
                 pending[0].cancel(true);
             }
-            pending[0] = trigger.schedule(isDisposed);
+            pending[0] = trigger.schedule();
         };
         return new Timer(wrapper, dispose);
     }
@@ -152,7 +156,7 @@ public class TimerService extends Service {
     /** Scheduling policy of a {@link #schedule} wrapper. */
     @FunctionalInterface
     private interface Trigger {
-        ScheduledFuture<?> schedule(AtomicBoolean isDisposed);
+        ScheduledFuture<?> schedule();
     }
 
     /** Returns a throttled wrapper: at most one call per {@code delay} window. */
@@ -162,7 +166,7 @@ public class TimerService extends Service {
             lastCall.set(System.currentTimeMillis());
             callback.run();
         };
-        return schedule("ctx.throttle()", isDisposed -> {
+        return schedule("ctx.throttle()", () -> {
             long now = System.currentTimeMillis();
             long last = lastCall.get();
             long elapsed = last == 0 ? Long.MAX_VALUE : now - last;
@@ -170,7 +174,7 @@ public class TimerService extends Service {
                 execute.run();
                 return null;
             }
-            if (!noTrailing && !isDisposed.get()) {
+            if (!noTrailing) {
                 return scheduler().schedule(execute, delay - elapsed, TimeUnit.MILLISECONDS);
             }
             return null;
@@ -179,10 +183,7 @@ public class TimerService extends Service {
 
     /** Returns a debounced wrapper: callbacks fire after {@code delay} of silence. */
     public Timer debounce(Runnable callback, long delay) {
-        return schedule("ctx.debounce()", isDisposed -> {
-            if (isDisposed.get()) return null;
-            return scheduler().schedule(callback, delay, TimeUnit.MILLISECONDS);
-        });
+        return schedule("ctx.debounce()", () -> scheduler().schedule(callback, delay, TimeUnit.MILLISECONDS));
     }
 
     /** Shuts down the scheduler (called on fiber teardown). Idempotent. */

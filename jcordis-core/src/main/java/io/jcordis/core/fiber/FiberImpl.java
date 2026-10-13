@@ -70,6 +70,14 @@ public final class FiberImpl implements Fiber {
     private volatile Object config;
     private volatile Object entry;
     private volatile String epoch;
+    /**
+     * Monotonic restart counter embedded in {@link #epoch}. A restart bumps it
+     * instead of routing through {@code INACTIVE}, so a load superseded while
+     * its (asynchronous) body is still running can be told apart from the
+     * newer load and must not fail or activate it (mirrors Cordis #189).
+     */
+    private volatile int revision;
+
     private volatile CompletableFuture<Void> inertia;
     /** Body failure captured by {@link #reload}; cleared only by {@link #update}. */
     private volatile Throwable error;
@@ -126,7 +134,7 @@ public final class FiberImpl implements Fiber {
         this.inject.putAll(inject);
         this.uid = 0;
         this.state = FiberState.ACTIVE;
-        this.epoch = "";
+        this.epoch = "0";
     }
 
     @Override
@@ -196,12 +204,32 @@ public final class FiberImpl implements Fiber {
     @Override
     public void update(Object config, boolean noSave) {
         assertActive();
-        ctx.events().waterfall(this, "internal/update", new Object[] {config, noSave}, args -> {
-            updateConfig(config);
-            // a failed fiber only recovers through update() (mirrors Cordis)
-            error = null;
-            return restart();
-        });
+        // the update hooks assume a loaded body, so an unloaded fiber (never
+        // started, or failed) skips the chain and restarts directly; its new
+        // config still reaches persistence through `internal/commit` (mirrors
+        // Cordis #134). The root fiber (no runtime) counts as loaded.
+        boolean loaded = !INACTIVE.equals(epoch);
+        Object resolved = loaded ? resolveConfig(config) : null;
+        if (!noSave) {
+            ctx.events().emit(this, "internal/commit", config);
+        }
+        updateConfig(config);
+        // a failed fiber only recovers through update() (mirrors Cordis)
+        error = null;
+        if (loaded) {
+            ctx.events().waterfall(this, "internal/update", new Object[] {resolved}, args -> restart());
+        } else {
+            restart();
+        }
+    }
+
+    /**
+     * Resolves a config through the {@code internal/config} waterfall. Runs on
+     * every reload and on every update, so listeners see what the plugin would
+     * see while the fiber keeps the source config (mirrors Cordis #134).
+     */
+    private Object resolveConfig(Object config) {
+        return ctx.events().waterfall(this, "internal/config", new Object[0], args -> config);
     }
 
     @Override
@@ -210,7 +238,11 @@ public final class FiberImpl implements Fiber {
         if (runtime == null) {
             return CompletableFuture.completedFuture(this);
         }
-        setEpoch(INACTIVE);
+        // bump the revision instead of routing through INACTIVE: the epoch
+        // always changes, so the body reloads even when the config (and every
+        // dependency uid) is unchanged, and a superseded load stays
+        // distinguishable from the newer one (mirrors Cordis #189)
+        revision++;
         refresh();
         return await();
     }
@@ -393,7 +425,7 @@ public final class FiberImpl implements Fiber {
     @Override
     public void refresh() {
         if (runtime == null) return;
-        StringBuilder epoch = new StringBuilder();
+        StringBuilder epoch = new StringBuilder().append(revision);
         for (String name : inject.keySet()) {
             Impl impl = store.get(name);
             if (impl == null) {
@@ -416,15 +448,23 @@ public final class FiberImpl implements Fiber {
 
     /**
      * State transition on dependency-epoch change (state pattern): moving
-     * INACTIVE → ready reloads the plugin body; ready → INACTIVE unloads it.
+     * INACTIVE → ready reloads the plugin body; ready → INACTIVE unloads it;
+     * ready → ready (a restart bumped the revision, or an injected service was
+     * replaced with a new fiber uid) tears the old body down before re-running
+     * it — mirroring Cordis, where any epoch change disposes and re-executes.
      */
     private void transition(String oldEpoch, String newEpoch) {
         boolean wasInactive = oldEpoch.equals(INACTIVE);
         boolean isInactive = newEpoch.equals(INACTIVE);
-        if (wasInactive && !isInactive) {
+        if (isInactive) {
+            if (!wasInactive) {
+                unloadBody();
+            }
+        } else if (wasInactive) {
             reload();
-        } else if (!wasInactive && isInactive) {
+        } else {
             unloadBody();
+            reload();
         }
     }
 
@@ -441,17 +481,25 @@ public final class FiberImpl implements Fiber {
     }
 
     private void reload() {
+        // identity of this load: a newer restart (revision bump) must not be
+        // failed, activated or de-tracked by the completion of this one
+        String loadEpoch = epoch;
         transitionState(FiberState.LOADING);
         try {
-            Object result = runtime.callback().apply(ctx, config);
+            Object result = runtime.callback().apply(ctx, resolveConfig(config));
             if (result instanceof CompletableFuture<?> pending) {
                 @SuppressWarnings("unchecked")
                 CompletableFuture<Object> future = (CompletableFuture<Object>) pending;
                 inertia = future.handle((value, failure) -> {
+                    boolean superseded = !Objects.equals(epoch, loadEpoch);
                     if (failure != null) {
-                        // body failed; a disposal racing the completion wins
-                        if (!disposed.get()) {
-                            handleBodyFailure(unwrapCause(failure));
+                        Throwable cause = unwrapCause(failure);
+                        // a superseded load still needs reporting, but cannot
+                        // fail the newer target (mirrors Cordis #189)
+                        if (superseded) {
+                            ctx.logger().error(cause);
+                        } else if (!disposed.get()) {
+                            handleBodyFailure(cause);
                         }
                     } else if (value instanceof Disposable disposable) {
                         // the collect decision is atomic with the drain in
@@ -460,7 +508,7 @@ public final class FiberImpl implements Fiber {
                         // immediately (mirrors dispose.spec 'async return 2')
                         boolean collected;
                         synchronized (lifecycle) {
-                            collected = !disposed.get();
+                            collected = !superseded && !disposed.get();
                             if (collected) {
                                 disposables.add(disposable);
                             }
@@ -471,12 +519,15 @@ public final class FiberImpl implements Fiber {
                         } else {
                             disposable.dispose();
                         }
-                    } else {
+                    } else if (!superseded) {
                         transitionState(FiberState.ACTIVE);
                         notifyServices();
                     }
-                    // mark the load as settled so tree task tracking sees it
-                    inertia = null;
+                    // mark the load as settled so tree task tracking sees it;
+                    // a superseded handle must not clear the newer load's task
+                    if (!superseded) {
+                        inertia = null;
+                    }
                     return null;
                 });
             } else {
