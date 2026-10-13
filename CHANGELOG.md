@@ -1,6 +1,13 @@
 # Changelog
 
-## 1.0.2-SNAPSHOT（未发布——Central 月度额度用尽，待下月发布）
+## 1.0.2 — 2026-10-13
+
+### Core（fiber / 事件 / Timer，对齐 cordis 2026-10 上游批次 `f8ea3cd..c261dd2`）
+
+- **fiber 重载版本号**（对齐 cordis `c261dd2` #189）：epoch 嵌入 `revision`，`restart()` 递增而非途经 INACTIVE——并发 update/restart 期间被取代的异步 load 只清理不污染新目标（旧 body 抛错不再把新 fiber 置 FAILED、旧 disposable 立即处置、不清新 load 的 inertia）；`transition` 补 active→active 分支，依赖服务换新 fiber 后依赖方正确重载
+- **配置解析时机与提交分离**（对齐 cordis `1431598` #134）：新增 `internal/config` 瀑布（**每次重载与每次 update** 都解析，插件看到 resolved、fiber 保存源 config；无 schema 时默认透传，作为扩展点）；新增 `internal/commit`（update 的持久化与重启解耦，`noSave` 跳过，未加载 fiber 也提交）；未加载 fiber 的 update 跳过钩子链直接重启；`internal/update` 链签名简化为 `(config, next)`
+- **`internal/update` 钩子随 fiber 处置**（对齐 cordis `7d0a90d` #56）：fiber 本地钩子注册改经 `fiber.effect`，重载自动注销——修复插件每重载一次累积一个钩子（3 次 update 实际触发 1+2+3 次）
+- **throttle/debounce dispose 防护**（对齐 cordis `10e1b1f` #161）：dispose 后 wrapper 永不再执行（此前窗口已过时立即分支照常跑 callback）
 
 ### HMR / Loader
 
