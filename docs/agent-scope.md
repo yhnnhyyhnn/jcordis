@@ -17,7 +17,7 @@ jcordis **1.0.1 已发布到 Maven Central**（命名空间 `io.github.yhnnhyyhn
 ```
 
 - `jcordis-all`：聚合（shaded）包，含 core + loader + cli，适合直接跑应用；
-- 本地仓库/离线：先 `mvn install`（开发版为 `1.0.2-SNAPSHOT`）；
+- 本地仓库/离线：先 `mvn install`（开发版为 `1.0.3-SNAPSHOT`）；
 - 版本选择：文档中的 `hmr.watch()`、`Include` 双向配置同步等能力见 `docs/compatibility.md`。
 
 ## 背景：M-C4 的需求

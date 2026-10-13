@@ -72,36 +72,53 @@ ls jcordis-core/target/*.asc         # 确认签名产物存在
 `-sources.jar` / `-javadoc.jar` / `.asc`，profile 无 unknown 参数告警。
 注意 `deploy` **本身无法预检**（会真实创建 deployment 并消耗额度）。
 
-### 1. parent 先发布（**必须**）
+### 1. parent 先发布（**必须，且要等到 PUBLISHED**）
 
 ```bash
-mvn -Prelease deploy -N -DskipTests \
-  -Dhttp.proxyHost=127.0.0.1 -Dhttp.proxyPort=7890 \
-  -Dhttps.proxyHost=127.0.0.1 -Dhttps.proxyPort=7890 -ntp
+mvn -Prelease deploy -N -DskipTests -ntp
+# 观察日志 deploymentId，然后轮询到 PUBLISHED 再进行下一步
 ```
 
-Central 校验子模块 pom 时需要已能看到 parent，否则继承元数据（Project URL / License / SCM / Developers）解析失败。
+Central 校验子模块 pom 时需要**已 PUBLISHED** 的 parent，否则继承元数据（Project URL / License / SCM / Developers）与 `dependencyManagement` 版本全部解析失败。2026-10-13（1.0.2）实测：parent 仅上传（PENDING/validated）时子模块 deployment 直接 FAILED，报 `Failed to get coordinates from pom file` + 元数据缺失 + test 依赖缺版本；等 parent PUBLISHED 后重发即全部通过。
 
-### 2. 逐模块发布
+> 代理：`central.sonatype.com` 当前可直连；若网络环境变化再补
+> `-Dhttp.proxyHost=127.0.0.1 -Dhttps.proxyHost=127.0.0.1 -Dhttps.proxyPort=7890`。
+
+### 2. 子模块发布（parent PUBLISHED 之后）
 
 ```bash
 mvn -Prelease deploy -pl :jcordis-core,:jcordis-loader,:jcordis-cli,:jcordis-maven-plugin,:jcordis-all \
-  -DskipTests \
-  -Dhttp.proxyHost=127.0.0.1 -Dhttp.proxyPort=7890 \
-  -Dhttps.proxyHost=127.0.0.1 -Dhttps.proxyPort=7890 -ntp
+  -DskipTests -ntp
 ```
 
-（首次发布建议逐模块单独执行，便于定位失败项；顺序上 core/loader 在前。）
+多模块 `-pl` 列表会合并为**一个 deployment**（1.0.2 实测单 deployment 含全部 5 模块工件）。
 
-### 3. Central Portal 手动 Publish（**当前必须**）
+### 3. 发布确认（autoPublish 已生效）
 
-`central-publishing-maven-plugin:0.6.0` **没有命令行 publish goal**，且 `autoPublish` 实测未自动触发——部署完成后状态为 `validated`，需要人工操作：
+`central-publishing-maven-plugin:0.6.0` 的 autoPublish **现已生效**（2026-10-13 实测：上传 → validated → PUBLISHING → PUBLISHED 全自动，约 1–4 分钟）。日志出现 `Deployment will publish automatically` 即无需人工到 Portal 点 Publish。
 
-1. 打开 <https://central.sonatype.com> → **Publishing** → **Deployments**
-2. 找到对应 deployment（`deploymentId` 会打印在构建日志中）
-3. 点击 **Publish**，等待状态变为 `PUBLISHED`
+轮询状态（token 来自 settings.xml 的 `central` server）：
 
-对每个模块重复（parent 与各模块是各自独立的 deployment）。
+```bash
+curl -s -u <user>:<token> \
+  "https://central.sonatype.com/api/v1/publisher/deployments?size=10" \
+  | grep -o '"deploymentId":"[^"]*","deploymentName":"[^"]*","namespace":"[^"]*","deploymentState":"[^"]*"'
+```
+
+清理失败的 deployment（**DELETE**，不是 drop）：
+
+```bash
+curl -s -u <user>:<token> -X DELETE \
+  "https://central.sonatype.com/api/v1/publisher/deployment/<id>"
+```
+
+最终以 repo1 可拉取为准：
+
+```bash
+curl -s -o /dev/null -w "%{http_code}" \
+  "https://repo1.maven.org/maven2/io/github/yhnnhyyhnn/jcordis-core/<v>/jcordis-core-<v>.jar"
+# 200 = 全球可用
+```
 
 ### 4. 发布后收尾
 
@@ -136,7 +153,8 @@ git commit -am "chore: 版本回退至 X.Y.(Z+1)-SNAPSHOT"
 
 | 症状 | 原因 / 处理 |
 |---|---|
-| `Project URL is not defined` / `License information is missing` / `SCM URL is not defined` / `Developers information is missing` | parent 尚未发布或版本不匹配，先发布 parent |
+| `Failed to get coordinates from pom file` + 元数据缺失 + test 依赖缺版本 | **parent 尚未 PUBLISHED** 就 deploy 了子模块——等 parent 发布完成再重发；失败的 deployment 用 API DELETE 清掉 |
+| `Project URL is not defined` / `License information is missing` / `SCM URL is not defined` / `Developers information is missing` | parent 尚未发布或版本不匹配，先发布 parent（并等到 PUBLISHED） |
 | `Could not find artifact ...:jcordis-parent:pom:X.Y.Z` | 本地仓库缺 parent；先 `mvn -N install` 或发布 parent |
 | 校验器报依赖缺版本 | 依赖未在 `dependencyManagement` 中；补版本或改用 parent 的 BOM |
 | 空模块报无 sources/javadoc | 加标记类 |

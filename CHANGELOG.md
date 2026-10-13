@@ -1,6 +1,10 @@
 # Changelog
 
+## 1.0.3-SNAPSHOT（未发布）
+
 ## 1.0.2 — 2026-10-13
+
+**已发布至 Maven Central**（`io.github.yhnnhyyhnn:*:1.0.2`，parent + 5 模块）。
 
 ### Core（fiber / 事件 / Timer，对齐 cordis 2026-10 上游批次 `f8ea3cd..c261dd2`）
 
