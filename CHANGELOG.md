@@ -2,6 +2,14 @@
 
 ## 1.0.4-SNAPSHOT（未发布）
 
+### cordis 2026-10 第二批上游对齐（`c261dd2..34c8ac5`，5 项移植）
+
+- **parallel 失败的 AggregateError 描述失败事件**（`1a87f46`）：消息为 `one or more listeners of event "X" failed`
+- **`Include` 配置文件写入的 Windows 文件锁防护**（`db20555`）：相同内容跳过写入；rename 被占用时 10 次递增退避重试
+- **jar 热替换不复活用户禁用的条目**（`fabd555`）：stage 3 按 dispose 前快照决策（disabled/removed/已重建三种跳过）
+- **匿名条目 id 防碰撞**（`0e0cc2c`）：patch insert 的显式 id 参与防碰撞；不复用已被显式占用的历史匿名 id
+- **移除 `cordis:` builtin 前缀**（`34c8ac5`）：跟随上游，builtin 按裸名解析
+
 ## 1.0.3 — 2026-10-13
 
 **已发布至 Maven Central**（`io.github.yhnnhyyhnn:*:1.0.3`，parent + 5 模块）。

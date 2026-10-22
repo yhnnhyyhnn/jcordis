@@ -140,4 +140,24 @@ class IsolateTest {
             ctx.emit(this, EVENT);
         }
     }
+
+    @org.junit.jupiter.api.Test
+    void serviceLookupShouldNotCrossIsolationBoundaries() {
+        Context root = Context.create();
+        root.provide("outer", "global-value");
+        Context isolated = root.isolate("outer");
+        java.util.List<Object> seen = new java.util.ArrayList<>();
+
+        Fiber fiber = isolated.plugin((ctx, cfg) -> {
+            seen.add(ctx.get("outer"));
+            return null;
+        });
+
+        fiber.await().join();
+        // the isolated realm resolves strictly from its own key: the global
+        // impl is invisible and the lookup stays a lenient null (jcordis's
+        // realm-aware get cannot leak across the boundary Cordis patched in
+        // its proxy walk, #209)
+        assertThat(seen).containsExactly((Object) null);
+    }
 }

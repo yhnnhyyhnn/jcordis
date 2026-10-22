@@ -292,4 +292,54 @@ class IncludePatchTest {
 
         assertThat(loads).as("the moved anonymous entry loaded again").hasSize(2);
     }
+
+    @Test
+    void anonymousIdIsNotReusedOnceExplicitlyOwned() throws IOException {
+        Path config = tempDir.resolve("reuse.yml");
+        Files.writeString(
+                config,
+                """
+                - name: feature-plugin
+                  config:
+                    n: 1
+                """,
+                StandardCharsets.UTF_8);
+        Loader loader = loader();
+        Include include = include(loader, config, List.of());
+
+        // read the id the anonymous entry received on the first pass
+        String assigned = loader.store.values().iterator().next().options.id;
+        assertThat(assigned).isNotBlank();
+
+        // the next file revision names another entry with exactly that id;
+        // the unchanged anonymous entry must NOT keep it (mirrors Cordis #216:
+        // reuse only while the id is not explicitly owned)
+        Files.writeString(
+                config,
+                """
+                - id: %s
+                  name: feature-plugin
+                  config:
+                    n: 2
+                - name: feature-plugin
+                  config:
+                    n: 1
+                """
+                        .formatted(assigned),
+                StandardCharsets.UTF_8);
+        include.refresh();
+        include.flush();
+
+        assertThat(loader.store.keySet())
+                .as("two distinct entries: the explicit one and a re-assigned anonymous one")
+                .hasSize(2);
+        assertThat(loader.resolve(assigned).options.config).isEqualTo(Map.of("n", 2));
+        for (String id : loader.store.keySet()) {
+            if (!id.equals(assigned)) {
+                assertThat(id)
+                        .as("the anonymous entry got a fresh id instead of the claimed one")
+                        .isNotEqualTo(assigned);
+            }
+        }
+    }
 }

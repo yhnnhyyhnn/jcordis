@@ -240,7 +240,9 @@ public final class EventBus {
                         }
                     }
                     if (!errors.isEmpty()) {
-                        throw new AggregateError(errors);
+                        // naming the failing event saves the caller from
+                        // correlating the members by hand (mirrors Cordis #205)
+                        throw new AggregateError(errors, "one or more listeners of event \"" + name + "\" failed");
                     }
                     return null;
                 });

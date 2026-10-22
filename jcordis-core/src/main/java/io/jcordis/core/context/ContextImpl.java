@@ -134,7 +134,10 @@ public final class ContextImpl implements Context {
         // each fiber's local resolution snapshot first, then its inject
         // declarations — a declared-but-unresolved dependency fails loudly
         // instead of leaking a null (mirrors Cordis's required-service walk;
-        // a root-level or never-injected name stays a lenient lookup)
+        // a root-level or never-injected name stays a lenient lookup). The
+        // fallback resolves strictly from THIS context's isolation key, so a
+        // realm only ever sees its own impls — the isolation-boundary leak
+        // Cordis fixed in its proxy walk (#209) cannot occur here
         return (T) events().waterfall((Object) null, "internal/get", new Object[] {this, name}, args -> {
             Fiber f = fiber();
             if (f.runtime() == null) {

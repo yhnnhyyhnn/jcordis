@@ -176,9 +176,6 @@ public class Loader extends EntryTree {
 
     @Override
     public Plugin importPlugin(String name) {
-        if (name.startsWith("cordis:")) {
-            return builtins.get(name.substring(7));
-        }
         Plugin plugin = builtins.get(name);
         return plugin != null ? plugin : modules.get(name);
     }
@@ -258,8 +255,12 @@ public class Loader extends EntryTree {
         try {
             // stage 2: unload every matching entry first
             List<Entry> stale = new java.util.ArrayList<>();
+            java.util.Map<Entry, Boolean> disabledAtUnload = new java.util.IdentityHashMap<>();
             for (Entry entry : entries()) {
                 if (name.equals(entry.options.name) && entry.fiber != null) {
+                    // the user-facing disabled state, snapshotted before the
+                    // disposal below sets the self-dispose side flag
+                    disabledAtUnload.put(entry, Boolean.TRUE.equals(entry.options.disabled));
                     // wait for in-flight asynchronous initialization before
                     // tearing the fiber down (the per-fiber drain)
                     drain(entry.fiber);
@@ -272,6 +273,25 @@ public class Loader extends EntryTree {
             // stage 3: rebuild per entry, skipping descendants of a stale ancestor
             for (Entry entry : stale) {
                 if (hasStaleAncestor(entry, stale)) continue;
+                // the drain above waited for in-flight initialization — the
+                // entry may have been removed or re-initialized from another
+                // thread during that wait, and a user-disabled entry must not
+                // be resurrected by the rebuild. The disabled state comes from
+                // the pre-disposal snapshot: the disposal itself sets the
+                // self-dispose side flag in options.disabled (mirrors Cordis #190)
+                if (Boolean.TRUE.equals(disabledAtUnload.get(entry))) {
+                    ctx.logger("loader").warn("skip reloading entry " + entry.options.id + " (disabled during unload)");
+                    continue;
+                }
+                if (entry.parent == null || entry.parent.tree.store.get(entry.options.id) != entry) {
+                    ctx.logger("loader").warn("skip reloading entry " + entry.options.id + " (removed during unload)");
+                    continue;
+                }
+                if (entry.fiber != null) {
+                    ctx.logger("loader")
+                            .warn("skip reloading entry " + entry.options.id + " (live fiber during unload)");
+                    continue;
+                }
                 try {
                     // disposing a fiber marks its entry disabled (self-dispose
                     // semantics); a hot replace must clear that side effect

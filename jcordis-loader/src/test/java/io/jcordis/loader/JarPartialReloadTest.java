@@ -59,6 +59,35 @@ class JarPartialReloadTest {
     }
 
     @Test
+    void disabledEntry_shouldNotBeResurrectedByReplace() throws Exception {
+        Path jar = buildJar("resurrect.jar", COUNTING);
+        Loader loader = new Loader(Context.create());
+        loader.loadJar(jar, "resurrect");
+
+        loader.read(List.of(entry("a", "resurrect", null), entry("b", "resurrect", null)));
+        int before = Integer.parseInt(System.getProperty("jcordis.probe.count", "0"));
+
+        // 'a' is disabled at runtime; the unload drained before stage 3, so
+        // the decision must come from the live entry — rebuilding would
+        // resurrect a plugin the user turned off (mirrors Cordis #190)
+        EntryOptions disable = new EntryOptions();
+        disable.disabled = true;
+        loader.update("a", disable, null);
+        assertThat(loader.expectFiber("a")).isNull();
+
+        loader.replaceJar(jar, "resurrect");
+
+        assertThat(loader.expectFiber("a"))
+                .as("a disabled entry is not resurrected")
+                .isNull();
+        assertThat(Boolean.TRUE.equals(loader.resolve("b").options.disabled)).isFalse();
+        assertThat(loader.expectFiber("b")).as("the enabled sibling is rebuilt").isNotNull();
+        assertThat(Integer.parseInt(System.getProperty("jcordis.probe.count", "0")))
+                .as("only the enabled sibling re-ran")
+                .isEqualTo(before + 1);
+    }
+
+    @Test
     void validateStageFailure_shouldLeaveRunningEntriesUntouched() throws Exception {
         Path jar = buildJar("valid.jar", COUNTING);
         Loader loader = new Loader(Context.create());

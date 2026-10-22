@@ -10,6 +10,7 @@ import io.jcordis.loader.EntryTree;
 import io.jcordis.loader.Loader;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.AccessDeniedException;
 import java.nio.file.Files;
 import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
@@ -44,6 +45,11 @@ import java.util.Set;
  * observe a truncated file.
  */
 public class Include implements Plugin {
+
+    /** Rename retries against a transient Windows file lock (mirrors Cordis #188). */
+    private static final int RENAME_RETRIES = 10;
+    /** Backoff before the first rename retry, in milliseconds. */
+    private static final long RENAME_BACKOFF = 20;
 
     /** The last file state we read or wrote. */
     private record Snapshot(String content, List<EntryOptions> data) {}
@@ -459,10 +465,42 @@ public class Include implements Plugin {
         return parser.write(options);
     }
 
+    /**
+     * Writes {@code content} to the config file via a temp file and an atomic
+     * move. The content is constant between flushes, so an identical rewrite
+     * is skipped — repeating the move is what another process holding the file
+     * (an editor, a virus scanner) keeps failing on Windows. A move blocked
+     * that way still retries briefly: the lock is normally gone within
+     * milliseconds (mirrors Cordis #188).
+     */
     private void writeText(String content) throws IOException {
+        if (java.util.Objects.equals(currentTextOrNull(), content)) return;
         Path tmp = path.resolveSibling(path.getFileName() + ".tmp");
         Files.writeString(tmp, content, StandardCharsets.UTF_8);
-        Files.move(tmp, path, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+        for (int attempt = 0; ; attempt++) {
+            try {
+                Files.move(tmp, path, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+                return;
+            } catch (AccessDeniedException | java.nio.file.AtomicMoveNotSupportedException e) {
+                if (attempt >= RENAME_RETRIES) {
+                    throw e;
+                }
+            }
+            try {
+                Thread.sleep(RENAME_BACKOFF * (attempt + 1));
+            } catch (InterruptedException interrupted) {
+                Thread.currentThread().interrupt();
+                throw new java.io.IOException("interrupted while writing " + path, interrupted);
+            }
+        }
+    }
+
+    private String currentTextOrNull() {
+        try {
+            return Files.readString(path, StandardCharsets.UTF_8);
+        } catch (IOException e) {
+            return null;
+        }
     }
 
     private void warn(String message) {
@@ -480,13 +518,26 @@ public class Include implements Plugin {
     /**
      * Entries the file leaves anonymous get an id here, before the loader sees
      * them. One that looks exactly like an entry we named on the previous read
-     * keeps that id, so editing a neighbor does not restart it; anything else
-     * gets a fresh id. Assigned ids stay in memory until the next write.
+     * keeps that id — unless that id is now explicitly owned — so editing a
+     * neighbor does not restart it; anything else gets a fresh id. Assigned
+     * ids stay in memory until the next write.
      */
     private void assignIds(List<EntryOptions> data) {
         Set<String> used = new HashSet<>();
         List<Object[]> pending = new ArrayList<>();
         walkAnonymous(data, null, used, pending);
+        // ids carried by patches (inserted entries) are as explicit as the
+        // file's own — a newly assigned id must not collide with them
+        // (mirrors Cordis #216)
+        for (Map<String, Object> patch : patches) {
+            if (patch.get("insert") != null) {
+                for (EntryOptions inserted : parser.convert(patch.get("insert"))) {
+                    if (inserted.id != null) {
+                        used.add(inserted.id);
+                    }
+                }
+            }
+        }
 
         Map<String, Anonymous> previous = new LinkedHashMap<>(anonymous);
         anonymous.clear();
@@ -500,6 +551,8 @@ public class Include implements Plugin {
                 Anonymous info = candidate.getValue();
                 if (!java.util.Objects.equals(info.parent(), parent) || !Journal.equals(info.options(), options))
                     continue;
+                // reuse only while the id is not claimed by an explicit entry
+                if (used.contains(candidate.getKey())) continue;
                 id = candidate.getKey();
                 iterator.remove();
                 break;

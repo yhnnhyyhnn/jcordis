@@ -1616,3 +1616,29 @@ Tests run: 374, Failures: 0（358 → 374）
 Reactor: 11/11 模块 SUCCESS, BUILD SUCCESS
 mvn -Pformat spotless:check -- BUILD SUCCESS
 ```
+
+## 对照 cordis：2026-10 第二批上游（c261dd2..34c8ac5，2026-10-22）
+
+30 提交：**5 项移植、12 项已等价/模型规避、其余不适用**（详见 compatibility.md 新表）。
+
+### 移植项
+
+1. **`1a87f46`**：`AggregateError` 支持 message;`EventBus.parallel` 失败时抛 `one or more listeners of event "X" failed`
+2. **`db20555`**:`Include.writeText` 相同内容跳过(避免重复 rename 触发 Windows 文件锁冲突)+ `AccessDenied/AtomicMoveNotSupported` 10 次递增退避
+3. **`fabd555`**:`replaceJar` stage 3 重读条目状态——disabled 取 dispose 前快照(dispose 自身写自禁用侧标记,直接读会被污染,首轮实现即被 JarPartialReloadTest 抓出)、removed 查 store、re-init 查 fiber;用户禁用的条目不再被热替换复活
+4. **`0e0cc2c`**:`assignIds` 的 used 集合纳入 patch insert 显式 id;匿名 id 复用前检查是否已被显式占用
+5. **`34c8ac5`**:移除 `cordis:` builtin 前缀(跟随上游,builtin 按裸名解析)
+
+### 一项"修了又回退"的评估结论
+
+`bc9a344`(get 链行走的隔离边界)首轮按 cordis 字面实现(边界抛错),被 LoaderIsolateConfigTest 三个既有契约测试(同 label 共享/本地域隐藏)抓出行为冲突——jcordis 的 `getImpl` 兜底本就严格按当前 ctx 的 isolateKey 解析,跨域泄漏在 jcordis 模型中不存在。回退为文档化"已等价",契约测试固化 lenient null 行为。
+
+### 测试(374 → 382)
+
+`IsolateTest` +1(边界契约)、`EventBusEdgeTest` +1(parallel 消息)、`JarPartialReloadTest` +1(禁用条目不复活)、`IncludePatchTest` +1(匿名 id 不复用被占用值);`LoaderGuardsTest` 的 builtin 断言随 `cordis:` 移除更新。
+
+```
+Tests run: 382, Failures: 0（374 → 382）
+Reactor: 11/11 模块 SUCCESS, BUILD SUCCESS
+mvn -Pformat spotless:check -- BUILD SUCCESS
+```

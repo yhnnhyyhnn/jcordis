@@ -38,7 +38,9 @@ class LoaderGuardsTest {
         loader.builtin("demo", (ctx, cfg) -> null);
 
         assertThat(loader.importPlugin("demo")).isNotNull();
-        assertThat(loader.importPlugin("cordis:@cordisjs/plugin-group")).isNotNull();
+        assertThat(loader.importPlugin("@cordisjs/plugin-group"))
+                .as("the cordis: specifier is gone (upstream 34c8ac5); builtins resolve by bare name")
+                .isNotNull();
         assertThat(loader.importPlugin("missing"))
                 .as("unknown names resolve to nothing")
                 .isNull();

@@ -158,4 +158,26 @@ class EventBusEdgeTest {
         root.events().emit(root, "app/dup");
         assertThat(calls).hasValue(3);
     }
+
+    @Test
+    void parallelAggregateErrorShouldNameTheFailingEvent() {
+        Context root = Context.create();
+        root.on("app/boom", (thisArg, args) -> {
+            throw new IllegalStateException("test");
+        });
+
+        Throwable error = root.events()
+                .parallel(root, "app/boom")
+                .handle((ignored, e) -> e)
+                .join();
+        if (error instanceof java.util.concurrent.CompletionException completion) {
+            error = completion.getCause();
+        }
+
+        assertThat(error).isInstanceOf(AggregateError.class);
+        assertThat(error)
+                .as("the aggregate names the failing event (mirrors Cordis #205)")
+                .hasMessageContaining("one or more listeners of event \"app/boom\" failed");
+        assertThat(((AggregateError) error).errors()).hasSize(1);
+    }
 }

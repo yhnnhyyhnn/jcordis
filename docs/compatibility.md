@@ -2,7 +2,7 @@
 
 > 本文档明确 jcordis 对 Cordis（TypeScript）移植过程中的**保留、修改、裁剪**，是行为对齐的权威参考。
 >
-> **对齐基线**：cordis `4.0.0-rc.10` + 2026-10 上游修复（`f8ea3cd..c261dd2`：fiber 重载版本号、每次重载解析配置、`internal/commit` 分离、`internal/update` 钩子随 fiber 处置、throttle dispose 防护、entry id 分隔符校验、Include ENOENT 判定）
+> **对齐基线**：cordis `4.0.0-rc.10` + 2026-10 上游修复（`f8ea3cd..c261dd2` 与 `c261dd2..34c8ac5` 两批：fiber 重载版本号、每次重载解析配置、`internal/commit` 分离、`internal/update` 钩子随 fiber 处置、throttle dispose 防护、entry id 分隔符校验、Include ENOENT 判定、隔离边界/并行错误描述/热替换禁用守卫/匿名 id 防碰撞/`cordis:` 前缀移除）
 
 ## 一、完全保留（语义等价）
 
@@ -97,3 +97,19 @@
 | `Entry.id()` 前缀守卫 | 无条件父前缀 | 已修：去除同 id 守卫，子条目与组同 id 时按 `g:g` 寻址 |
 | `ctx.mixin` | accessor 声明 + props 守卫 | 已修：`provide`/`mixin` 互斥守卫（"already declared as accessor/service"）；accessor 的动态属性读取仍不适用（Java 无 Proxy，见第二节） |
 | `ServiceKey.of` CANONICAL 表 | key 属于每棵树 | 已修：canonical key 本就按值等价（uid=0 + name），去掉全局缓存表，消除全 JVM 累积 |
+
+### 2026-10 第二批上游（`c261dd2..34c8ac5`，30 提交）处置
+
+**已移植（5 项）**：
+
+| cordis 提交 | 内容 | jcordis 实现 |
+|---|---|---|
+| `1a87f46` | parallel 失败的 AggregateError 描述失败事件 | `AggregateError(errors, message)` 双参构造；`EventBus.parallel` 抛 `one or more listeners of event "X" failed` |
+| `db20555` | Windows rename 被文件锁阻塞：相同内容跳过 + 瞬态错误退避重试 | `Include.writeText`：内容一致短路 + `AccessDeniedException`/`AtomicMoveNotSupportedException` 10 次 20ms 递增退避 |
+| `fabd555` | 卸载等待期间被 disable/remove 的条目不被重建 | `Loader.replaceJar` stage 3 决策：disabled 取 **dispose 前快照**（dispose 自身会写自禁用侧标记）、removed 查 store、re-init 查 fiber |
+| `0e0cc2c` | 匿名 id 不复用已被显式占用的值；patch insert 的显式 id 参与防碰撞 | `Include.assignIds`：used 集合纳入 patches insert 的 id；复用前检查 used |
+| `34c8ac5` | 移除 `cordis:` builtin 前缀 | `Loader.importPlugin` 删前缀分支，builtin 按裸名解析 |
+
+**已等价/模型规避（12 项）**：`bc9a344`（隔离边界——jcordis 的 `getImpl` 兜底严格按当前 ctx 的 isolateKey 解析，域外值天然不可见，隔离域内 get 为 lenient null 而非抛错，契约测试 `IsolateTest.serviceLookupShouldNotCrossIsolationBoundaries`）；`5dac695`（unload 尾部显式 `transitionState(DISPOSED)`）；`1ce0e49`（renderThrowable 空 errors 列表天然不展开）；`7e9eb09`（inject 配置在 Fiber 构造时固化进 ctx intercept 层，无 def-site 运行时查询需求）；`9cad5e8`（jcordis 级联销毁同步：notify→refresh→unload 同一调用栈，依赖者先于 impl 移除完成卸载）；`147e4f2`（isolate 变更走重启，provide disposer 的 key 对称）；`1a6df96`/`67538f6`（schema 校验定位，jcordis 无 schema）；`6434188`（patch 归属按实际应用推导——jcordis 保持 id 级保守归属，键级归属列为增强项）；`e76a291`/`df4431e`/`a71c658`（Windows 盘符/分隔符——Java `Path` 天然正确）。
+
+**不适用（其余）**：`1d9ad95`（`!!js` 表达式，js-expr 裁剪）、`8273ac3`/`10ef5d8`（npm registry/脚手架失败报告，jcordis-cli 为 Maven 模板）、`3cef027`（TS 类型）、`9aa1415`（TS symbol 属性）、CI/chore/版本类。
