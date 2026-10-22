@@ -1642,3 +1642,23 @@ Tests run: 382, Failures: 0（374 → 382）
 Reactor: 11/11 模块 SUCCESS, BUILD SUCCESS
 mvn -Pformat spotless:check -- BUILD SUCCESS
 ```
+
+## 功能对齐专项:logger 一族三项(2026-10-22)
+
+以 cordis `34c8ac5` 为基准的 API 面盘点,本轮落地 logger 三项(均为 compatibility.md 第三节的裁剪项):
+
+1. **`%o`/`%O` 按 JSON 渲染**(对齐 `defaultFormatters.o = JSON.stringify`):core 零依赖,手写 `jsonify`——字符串加引号、Map/数组/Iterable 展开、深度上限 8 防循环(cordis 循环引用抛 TypeError;Java 侧缩写为 `…`,日志调用永不失败)
+2. **logger intercept 的 `level`**(对齐 `LoggerService[symbols.invoke]` 读 `Intercept={name, level}`):`named(Context)` 同时解析 name 与 level;threshold 链对齐为 **exporter per-name → exporter default → logger level → INFO**
+3. **Exporter 自定义 formatters**(对齐 `exporter.formatters?.[char] ?? defaultFormatters[char]`):`Exporter.ValueFormatter` 公共接口,exporter 可按占位符字母覆盖默认策略
+
+其余盘点结论:`internal/status` 已由 Loader 消费(enableLogs 的 reload/unload 日志);interval 的迭代形态在 Java 无自然等价(记增强项);isolate impl 原地迁移与动态编译维持既有裁剪决策。
+
+### 测试(382 → 387)
+
+`LoggerFormatTest` +3(JSON 复合值/循环缩写/exporter 覆盖)、`LoggerServiceEdgeTest` +2(intercept level 生效/让位于 exporter default);占位符总测断言随 JSON 语义更新(`%o` 字符串带引号)。
+
+```
+Tests run: 387, Failures: 0（382 → 387）
+Reactor: 11/11 模块 SUCCESS, BUILD SUCCESS
+mvn -Pformat spotless:check -- BUILD SUCCESS
+```

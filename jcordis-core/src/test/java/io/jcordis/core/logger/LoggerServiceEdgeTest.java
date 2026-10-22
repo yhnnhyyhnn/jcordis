@@ -115,4 +115,41 @@ class LoggerServiceEdgeTest {
                 .extracting(args -> args[0])
                 .containsExactly("two", "three");
     }
+
+    @Test
+    void interceptLevelShouldGateWithoutExporterConfig() {
+        Context root = Context.create();
+        List<Message> captured = new ArrayList<>();
+        root.loggerService().exporter(collecting(captured, Map.of()));
+
+        // a logger whose intercept sets the level to DEBUG(3) sees debug; the
+        // plain one keeps the INFO default — the threshold chain is
+        // per-name exporter config, exporter default, logger level, INFO
+        Context verbose = root.intercept("logger", Map.of("level", LoggerLevel.DEBUG.value()));
+        verbose.logger().debug("from-verbose");
+        root.logger().debug("from-plain");
+
+        assertThat(captured)
+                .extracting(Message::args)
+                .extracting(args -> args[0])
+                .containsExactly("from-verbose");
+    }
+
+    @Test
+    void interceptLevelShouldLoseToExporterDefaults() {
+        Context root = Context.create();
+        List<Message> captured = new ArrayList<>();
+        // exporter default pins the threshold at WARN(1): a verbose logger
+        // intercept cannot lower it below the exporter's own default
+        root.loggerService().exporter(collecting(captured, Map.of("default", LoggerLevel.WARN.value())));
+
+        Context verbose = root.intercept("logger", Map.of("level", LoggerLevel.DEBUG.value()));
+        verbose.logger().info("dropped");
+        verbose.logger().warn("kept");
+
+        assertThat(captured)
+                .extracting(Message::args)
+                .extracting(args -> args[0])
+                .containsExactly("kept");
+    }
 }

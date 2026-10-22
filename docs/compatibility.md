@@ -56,9 +56,9 @@
 | isolate Realm 完整语义 | LocalRealm/GlobalRealm 7 步切换 + 服务 impl 迁移 | LocalRealm/GlobalRealm + realm GC（partial-dispose 消费）+ **isolate 变更走插件重启**（副作用重执行，非 impl 原地迁移）；服务 impl 原地迁移未实现 | 参考用 prototype 原地交换，jcordis 为不可变 ctx 拷贝模型 |
 | `internal/get`/`internal/set` 瀑布 | 完整 waterfall 链 | ✅ 已实现（见第一节；尾端语义与参考一致） | 2026-08 对齐修正 |
 | 调用者追踪（traceable） | JS Proxy + `symbols.tracker` | 未移植 | 影响：outer-caller intercept 覆盖、logger 调用栈 name 恢复不可用 |
-| `internal/status` 事件消费 | fiber 状态变化通知 | 事件已发射（`transitionState`）；**消费方**（状态跟踪服务）留待后续 | |
-| ANSI 颜色完整格式化 | `%o` inspect、C256 色板、showDiff | ConsoleExporter 基础 ANSI + %s/%d；深度 inspect 未移植 | |
-| `interval(delay)` async iterator | JS AsyncIterable | 未移植（仅回调形态） | |
+| `internal/status` 事件消费 | fiber 状态变化通知 | 事件已发射（`transitionState`）并由 Loader 消费（enableLogs 的 reload/unload 日志）；独立状态跟踪服务未移植 | |
+| ANSI 颜色完整格式化 | `%o` inspect、C256 色板、showDiff | ConsoleExporter 基础 ANSI + %s/%d；**%o/%O 已按 JSON 渲染（2026-10-22，手写 jsonify，循环缩写 `…` 而非抛错）**；logger intercept 的 `level` 与 `Exporter.formatters` 自定义策略已对齐；showDiff 保留基础时间差 | |
+| `interval(delay)` async iterator | JS AsyncIterable | 未移植（Java 无自然等价，记增强项；回调形态可用） | |
 | include js-expr YAML 标签 | `!js` 标签 → eval | 未移植（安全决策） | |
 | include 文件热重载 | include.refresh() + watcher + 双向 journal 写回 | 同（`Hmr` 轮询 + `Include` journal 写回）；patch 变更不回写 patch（patch 拥有项的变化不落盘） | 写回前只把 **ENOENT** 当"文件缺失等待"，其他读失败上抛（对齐 #171） |
 | Maven Archetype | | 未做（选方案 A：内嵌模板 CLI） | |

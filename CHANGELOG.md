@@ -2,6 +2,12 @@
 
 ## 1.0.4-SNAPSHOT（未发布）
 
+### 功能对齐：logger 一族三项
+
+- **`%o`/`%O` 按 JSON 渲染**（对齐 `JSON.stringify` formatter）：字符串加引号、Map/数组/Iterable 展开；深度上限防循环（缩写 `…`，日志调用永不失败）
+- **logger intercept 的 `level`**：`ctx.intercept("logger", {name, level})` 两字段均生效；级别阈值链对齐为 exporter per-name → exporter default → logger level → INFO
+- **`Exporter.formatters()` 自定义占位符策略**：exporter 可按字母覆盖默认 formatter（新增 `Exporter.ValueFormatter` 接口）
+
 ### cordis 2026-10 第二批上游对齐（`c261dd2..34c8ac5`，5 项移植）
 
 - **parallel 失败的 AggregateError 描述失败事件**（`1a87f46`）：消息为 `one or more listeners of event "X" failed`

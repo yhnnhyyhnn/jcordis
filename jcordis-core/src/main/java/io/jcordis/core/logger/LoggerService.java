@@ -83,40 +83,50 @@ public final class LoggerService {
 
     /** Returns a logger named after the context's intercept chain or fiber. */
     public Logger named(Context source) {
-        String name = resolveName(source);
-        return new Logger(name, this);
+        String name = null;
+        Integer level = null;
+        Context cursor = source;
+        while (cursor != null) {
+            Object config = cursor.interceptConfig("logger");
+            if (config instanceof Map<?, ?> map) {
+                if (name == null && map.get("name") != null) {
+                    name = String.valueOf(map.get("name"));
+                }
+                if (level == null && map.get("level") instanceof Number number) {
+                    level = number.intValue();
+                }
+            }
+            cursor = cursor.parent();
+        }
+        if (name == null) {
+            name = source.fiber().name();
+        }
+        return new Logger(name, level, this);
     }
 
     /** Returns a logger with an explicit name. */
     public Logger named(String name) {
-        return new Logger(name, this);
+        return new Logger(name, null, this);
     }
 
-    private String resolveName(Context source) {
-        Context cursor = source;
-        while (cursor != null) {
-            Object config = cursor.interceptConfig("logger");
-            if (config instanceof Map<?, ?> map && map.get("name") != null) {
-                return (String) map.get("name");
-            }
-            cursor = cursor.parent();
-        }
-        return source.fiber().name();
-    }
-
-    void log(String type, int level, String name, Object... args) {
+    void log(String type, int level, String name, Integer loggerLevel, Object... args) {
         if (args.length == 1 && args[0] instanceof io.jcordis.core.event.AggregateError aggregate) {
             for (Throwable error : aggregate.errors()) {
-                log(type, level, name, error);
+                log(type, level, name, loggerLevel, error);
             }
             return;
         }
         int sn = snMessage.incrementAndGet();
         long ts = System.currentTimeMillis();
         for (Exporter exporter : exporters.values()) {
+            // threshold chain: per-name exporter config, then its default,
+            // then the logger's intercept level, then INFO (mirrors Cordis)
             Integer threshold = exporter.levels().get(name);
             if (threshold == null) {
-                threshold = exporter.levels().getOrDefault("default", LoggerLevel.INFO.value());
+                threshold = exporter.levels().get("default");
+            }
+            if (threshold == null) {
+                threshold = loggerLevel != null ? loggerLevel : LoggerLevel.INFO.value();
             }
             if (threshold < level) continue;
             exporter.export(new Message(sn, ts, name, type, level, args));

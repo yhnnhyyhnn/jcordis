@@ -1,5 +1,7 @@
 package io.jcordis.core.logger;
 
+import java.util.Map;
+
 /**
  * A named logger, mirroring Cordis's {@code Logger}.
  *
@@ -10,10 +12,14 @@ package io.jcordis.core.logger;
 public final class Logger {
 
     private final String name;
+    /** Threshold from the intercept chain; {@code null} falls back to INFO. */
+    private final Integer level;
+
     private final LoggerService service;
 
-    Logger(String name, LoggerService service) {
+    Logger(String name, Integer level, LoggerService service) {
         this.name = name;
+        this.level = level;
         this.service = service;
     }
 
@@ -21,20 +27,25 @@ public final class Logger {
         return name;
     }
 
+    /** The intercept-provided threshold, or {@code null} for the default. */
+    public Integer level() {
+        return level;
+    }
+
     public void error(Object... args) {
-        service.log("error", LoggerLevel.ERROR.value(), name, args);
+        service.log("error", LoggerLevel.ERROR.value(), name, level, args);
     }
 
     public void warn(Object... args) {
-        service.log("warn", LoggerLevel.WARN.value(), name, args);
+        service.log("warn", LoggerLevel.WARN.value(), name, level, args);
     }
 
     public void info(Object... args) {
-        service.log("info", LoggerLevel.INFO.value(), name, args);
+        service.log("info", LoggerLevel.INFO.value(), name, level, args);
     }
 
     public void debug(Object... args) {
-        service.log("debug", LoggerLevel.DEBUG.value(), name, args);
+        service.log("debug", LoggerLevel.DEBUG.value(), name, level, args);
     }
 
     /** Wraps {@code value} in an ANSI color escape for the given 256-color code. */
@@ -90,14 +101,14 @@ public final class Logger {
                 sb.append('%');
             } else {
                 Object value = remaining.isEmpty() ? null : remaining.remove(0);
-                sb.append(formatter(spec).apply(value, exporter, message));
+                sb.append(formatter(exporter, spec).apply(value, exporter, message));
             }
             cursor = matcher.end();
         }
         sb.append(format.substring(cursor));
         for (Object arg : remaining) {
             if (arg != null && !(arg instanceof String)) {
-                arg = formatter("o").apply(arg, exporter, message);
+                arg = formatter(exporter, "o").apply(arg, exporter, message);
             }
             sb.append(' ').append(arg);
         }
@@ -166,7 +177,7 @@ public final class Logger {
                 return "NaN";
             }
         });
-        Formatter object = (value, exporter, message) -> value == null ? "null" : String.valueOf(value);
+        Formatter object = (value, exporter, message) -> value == null ? "null" : jsonify(value, 0);
         formatters.put("o", object);
         formatters.put("O", object);
         formatters.put("c", (value, exporter, message) -> "");
@@ -176,8 +187,68 @@ public final class Logger {
         return java.util.Map.copyOf(formatters);
     }
 
-    private static Formatter formatter(String spec) {
-        return FORMATTERS.getOrDefault(spec, (value, exporter, message) -> "%" + spec + value);
+    /** Nesting depth beyond which {@link #jsonify} stops expanding (cyclic-safe). */
+    private static final int JSON_MAX_DEPTH = 8;
+
+    /**
+     * Renders a value as JSON, mirroring Cordis's {@code JSON.stringify}
+     * object formatter: strings are quoted, maps/arrays/iterables expand. A
+     * depth limit replaces the cyclic-reference error — deeply nested values
+     * abbreviate instead of throwing (the logging call itself must never fail).
+     */
+    static String jsonify(Object value, int depth) {
+        if (value == null) return "null";
+        if (value instanceof CharSequence || value instanceof Character) {
+            return "\"" + value + "\"";
+        }
+        if (value instanceof Boolean || value instanceof Number) {
+            return value.toString();
+        }
+        if (depth >= JSON_MAX_DEPTH) {
+            return "…";
+        }
+        StringBuilder sb = new StringBuilder();
+        if (value instanceof Map<?, ?> map) {
+            sb.append('{');
+            boolean first = true;
+            for (Map.Entry<?, ?> entry : map.entrySet()) {
+                if (!first) sb.append(',');
+                first = false;
+                sb.append(jsonify(String.valueOf(entry.getKey()), depth + 1))
+                        .append(':')
+                        .append(jsonify(entry.getValue(), depth + 1));
+            }
+            return sb.append('}').toString();
+        }
+        if (value instanceof Object[] array) {
+            sb.append('[');
+            for (int i = 0; i < array.length; i++) {
+                if (i > 0) sb.append(',');
+                sb.append(jsonify(array[i], depth + 1));
+            }
+            return sb.append(']').toString();
+        }
+        if (value instanceof Iterable<?> iterable) {
+            sb.append('[');
+            boolean first = true;
+            for (Object item : iterable) {
+                if (!first) sb.append(',');
+                first = false;
+                sb.append(jsonify(item, depth + 1));
+            }
+            return sb.append(']').toString();
+        }
+        return "\"" + value + "\"";
+    }
+
+    private static Formatter formatter(Exporter exporter, String spec) {
+        // an exporter-provided strategy wins over the default (mirrors Cordis's
+        // `exporter.formatters?.[char] ?? defaultFormatters[char]`)
+        Exporter.ValueFormatter custom = exporter.formatters().get(spec);
+        if (custom != null) {
+            return custom::apply;
+        }
+        return FORMATTERS.getOrDefault(spec, (value, e, message) -> "%" + spec + value);
     }
 
     private static final int[] C16 = {6, 2, 3, 4, 5, 1};

@@ -38,7 +38,48 @@ class LoggerFormatTest {
                 exporter(0, 10240),
                 message("app", "%s|%d|%i|%f|%o|%O|%c", "text", "42.7", "3.9", "1.5", null, "obj", "ignored"));
 
-        assertThat(rendered).isEqualTo("text|42|3|1.5|null|obj|");
+        // %o/%O render as JSON (mirrors Cordis's JSON.stringify formatter)
+        assertThat(rendered).isEqualTo("text|42|3|1.5|null|\"obj\"|");
+    }
+
+    @Test
+    void objectPlaceholderShouldRenderAsJson() {
+        String rendered = Logger.format(
+                exporter(0, 10240),
+                message("app", "%o", java.util.Map.of("a", 1, "list", java.util.Arrays.asList(true, null, "x"))));
+
+        assertThat(rendered)
+                .as("maps, arrays and iterables expand like JSON.stringify")
+                .isEqualTo("{\"a\":1,\"list\":[true,null,\"x\"]}");
+    }
+
+    @Test
+    void deepObjectPlaceholderShouldAbbreviateInsteadOfLooping() {
+        java.util.Map<Object, Object> cyclic = new java.util.HashMap<>();
+        cyclic.put("self", cyclic);
+
+        String rendered = Logger.format(exporter(0, 10240), message("app", "%o", cyclic));
+
+        assertThat(rendered).as("cyclic structures abbreviate, never throw").contains("…");
+    }
+
+    @Test
+    void exporterFormatterShouldOverrideTheDefault() {
+        io.jcordis.core.logger.Exporter exporter = new io.jcordis.core.logger.Exporter() {
+            @Override
+            public void export(io.jcordis.core.logger.Message message) {}
+
+            @Override
+            public java.util.Map<String, io.jcordis.core.logger.Exporter.ValueFormatter> formatters() {
+                return java.util.Map.of("o", (value, e, m) -> "<" + value + ">");
+            }
+        };
+
+        String rendered = Logger.format(exporter, message("app", "%o", "obj"));
+
+        assertThat(rendered)
+                .as("an exporter strategy wins over the default (mirrors Cordis)")
+                .isEqualTo("<obj>");
     }
 
     @Test
