@@ -44,9 +44,11 @@ class LoggerFormatTest {
 
     @Test
     void objectPlaceholderShouldRenderAsJson() {
-        String rendered = Logger.format(
-                exporter(0, 10240),
-                message("app", "%o", java.util.Map.of("a", 1, "list", java.util.Arrays.asList(true, null, "x"))));
+        // LinkedHashMap for a deterministic key order (Map.of iterates unordered)
+        java.util.Map<String, Object> value = new java.util.LinkedHashMap<>();
+        value.put("a", 1);
+        value.put("list", java.util.Arrays.asList(true, null, "x"));
+        String rendered = Logger.format(exporter(0, 10240), message("app", "%o", value));
 
         assertThat(rendered)
                 .as("maps, arrays and iterables expand like JSON.stringify")

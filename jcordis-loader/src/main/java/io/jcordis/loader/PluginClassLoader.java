@@ -1,5 +1,6 @@
 package io.jcordis.loader;
 
+import java.io.IOException;
 import java.net.MalformedURLException;
 import java.net.URL;
 import java.net.URLClassLoader;
@@ -15,8 +16,32 @@ import java.nio.file.Path;
  */
 public final class PluginClassLoader extends URLClassLoader {
 
+    private final Runnable onClose;
+
+    /** Loads a plugin from its jar file. */
     public PluginClassLoader(Path jar, ClassLoader parent) {
-        super(new URL[] {toUrl(jar)}, parent);
+        this(new URL[] {toUrl(jar)}, parent, null);
+    }
+
+    /**
+     * Loads a plugin from arbitrary classpath roots (jar files or class
+     * directories), with an optional cleanup run when the loader closes
+     * (compiled source directories are throwaway).
+     */
+    public PluginClassLoader(URL[] urls, ClassLoader parent, Runnable onClose) {
+        super(urls, parent);
+        this.onClose = onClose;
+    }
+
+    @Override
+    public void close() throws IOException {
+        try {
+            super.close();
+        } finally {
+            if (onClose != null) {
+                onClose.run();
+            }
+        }
     }
 
     private static URL toUrl(Path jar) {

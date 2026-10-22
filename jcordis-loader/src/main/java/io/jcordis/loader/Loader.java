@@ -9,6 +9,7 @@ import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
@@ -250,6 +251,86 @@ public class Loader extends EntryTree {
             closeQuietly(fresh);
             throw e;
         }
+        swapPlugin(name, plugin, previous, fresh);
+        return plugin;
+    }
+
+    /**
+     * Compiles a directory of plugin sources with the system javac and
+     * registers the result under {@code name} — the JDK-backed counterpart of
+     * {@link #loadJar} and Cordis's dynamic ESM import. The compiled classes
+     * live in a throwaway directory owned by the plugin's class loader and are
+     * deleted with it.
+     *
+     * <p>Plugin discovery: a {@code META-INF/services/io.jcordis.core.registry.Plugin}
+     * declaration in the source tree wins (mirroring the jar path); otherwise
+     * the tree must contain exactly one concrete {@link Plugin} implementation.
+     *
+     * @throws SourceCompiler.CompilationException when the sources do not compile
+     * @throws IllegalArgumentException            on a missing/empty source tree, a JDK-less runtime,
+     *                                             or an ambiguous plugin declaration
+     */
+    public synchronized Plugin loadSource(Path sourceDir, String name) throws IOException {
+        PluginClassLoader previous = classLoaders.get(name);
+        if (previous != null) {
+            unload(name);
+        }
+        SourceCompiler.Compilation compilation = SourceCompiler.compile(sourceDir);
+        PluginClassLoader loader = sourceClassLoader(compilation);
+        Plugin plugin;
+        try {
+            plugin = discoverSourcePlugin(loader, sourceDir, compilation);
+        } catch (RuntimeException | Error e) {
+            closeQuietly(loader);
+            throw e;
+        }
+        classLoaders.put(name, loader);
+        modules.put(name, plugin);
+        return plugin;
+    }
+
+    /**
+     * Recompiles the source directory and hot-swaps every entry using the
+     * plugin, in the same three stages as {@link #replaceJar}: a broken tree
+     * fails the compile before anything is touched, and the previous loader
+     * (with its class directory) is always released.
+     */
+    public synchronized Plugin replaceSource(Path sourceDir, String name) throws IOException {
+        PluginClassLoader previous = classLoaders.get(name);
+        // stage 1: compile and instantiate before touching any entry
+        SourceCompiler.Compilation compilation = SourceCompiler.compile(sourceDir);
+        PluginClassLoader fresh = sourceClassLoader(compilation);
+        Plugin plugin;
+        try {
+            plugin = discoverSourcePlugin(fresh, sourceDir, compilation);
+        } catch (RuntimeException | Error e) {
+            closeQuietly(fresh);
+            throw e;
+        }
+        swapPlugin(name, plugin, previous, fresh);
+        return plugin;
+    }
+
+    /** A class loader over a freshly compiled class directory, deleted when the loader closes. */
+    private PluginClassLoader sourceClassLoader(SourceCompiler.Compilation compilation) throws IOException {
+        Path directory = compilation.classDirectory();
+        try {
+            return new PluginClassLoader(
+                    new java.net.URL[] {directory.toUri().toURL()},
+                    getClass().getClassLoader(),
+                    () -> SourceCompiler.deleteRecursively(directory));
+        } catch (java.net.MalformedURLException e) {
+            throw new IllegalArgumentException("invalid compiled class directory: " + directory, e);
+        }
+    }
+
+    /**
+     * Stages 2–3 of a hot swap, shared by the jar and source paths: registers
+     * the fresh plugin, unloads every matching entry (disabling/removal during
+     * the drain is honored), then rebuilds per entry with ancestor skipping
+     * and isolated failures. The previous loader is always closed.
+     */
+    private void swapPlugin(String name, Plugin plugin, PluginClassLoader previous, PluginClassLoader fresh) {
         classLoaders.put(name, fresh);
         modules.put(name, plugin);
         try {
@@ -306,12 +387,71 @@ public class Loader extends EntryTree {
             }
         } finally {
             // even if entry teardown/reload throws, the previous class loader
-            // must be closed — otherwise it holds the old jar handle forever
+            // must be closed — otherwise it holds the old jar/class files forever
             if (previous != null) {
                 closeQuietly(previous);
             }
         }
-        return plugin;
+    }
+
+    /**
+     * Finds the plugin of a compiled source tree: an explicit
+     * {@code META-INF/services/io.jcordis.core.registry.Plugin} file in the
+     * tree wins (mirroring the jar path); otherwise the tree must contain
+     * exactly one concrete {@link Plugin} implementation.
+     */
+    private static Plugin discoverSourcePlugin(
+            PluginClassLoader loader, Path sourceDir, SourceCompiler.Compilation compilation) throws IOException {
+        Path declaration = sourceDir.resolve("META-INF/services/io.jcordis.core.registry.Plugin");
+        if (Files.isRegularFile(declaration)) {
+            for (String line : Files.readAllLines(declaration, StandardCharsets.UTF_8)) {
+                line = line.trim();
+                if (line.isEmpty() || line.startsWith("#")) continue;
+                Plugin plugin = instantiateSourceClass(loader, line);
+                if (plugin != null) {
+                    return plugin;
+                }
+            }
+            throw new IllegalArgumentException(
+                    "no loadable plugin class in " + declaration + " (source tree: " + sourceDir + ")");
+        }
+        List<Plugin> candidates = new java.util.ArrayList<>();
+        List<String> names = new java.util.ArrayList<>();
+        for (String className : compilation.classNames()) {
+            Plugin plugin = instantiateSourceClass(loader, className);
+            if (plugin != null) {
+                candidates.add(plugin);
+                names.add(className);
+            }
+        }
+        if (candidates.size() == 1) {
+            return candidates.get(0);
+        }
+        if (candidates.isEmpty()) {
+            throw new IllegalArgumentException("no Plugin implementation among the sources of " + sourceDir
+                    + " — provide exactly one, or declare META-INF/services/io.jcordis.core.registry.Plugin");
+        }
+        throw new IllegalArgumentException("multiple Plugin implementations in " + sourceDir + " (" + names
+                + ") — declare META-INF/services/io.jcordis.core.registry.Plugin to choose one");
+    }
+
+    /** Instantiates a class from the fresh loader, or {@code null} if it is not a loadable plugin. */
+    private static Plugin instantiateSourceClass(PluginClassLoader loader, String className) {
+        try {
+            Class<?> clazz = Class.forName(className, false, loader);
+            // only classes the fresh loader itself defined count — a class
+            // visible through the parent classpath belongs to the host
+            if (clazz.getClassLoader() != loader
+                    || !Plugin.class.isAssignableFrom(clazz)
+                    || clazz.isInterface()
+                    || java.lang.reflect.Modifier.isAbstract(clazz.getModifiers())) {
+                return null;
+            }
+            Object instance = clazz.getDeclaredConstructor().newInstance();
+            return instance instanceof Plugin plugin ? plugin : null;
+        } catch (ReflectiveOperationException | LinkageError e) {
+            return null;
+        }
     }
 
     /** Waits for a fiber's in-flight asynchronous initialization, if any. */

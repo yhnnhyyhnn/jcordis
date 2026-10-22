@@ -1682,3 +1682,24 @@ Tests run: 388, Failures: 0（387 → 388）
 Reactor: 11/11 模块 SUCCESS, BUILD SUCCESS
 mvn -Pformat spotless:check -- BUILD SUCCESS
 ```
+
+## 新功能:源码目录的动态编译加载与热替换(2026-10-22)
+
+roadmap Phase 4 的"动态编译"增强项落地,补齐 compatibility 裁剪表"动态模块加载"的核心缺口——cordis 动态 ESM import 的 Java 近似:
+
+### API(loader)
+
+- **`Loader.loadSource(Path sourceDir, String name)`**:系统 javac 编译源码目录 → 一次性临时类目录 → 独立 PluginClassLoader(关闭时自动删除类目录,PluginClassLoader 增加 cleanup 钩子)→ 按约定发现插件注册
+- **`Loader.replaceSource(Path sourceDir, String name)`**:与 `replaceJar` **共用三阶段热替换**(stage 2/3 抽取为 `swapPlugin` 共用——per-entry 卸载重建、禁用快照守卫、失败隔离);坏源码在编译期(stage 1)失败,不触碰任何运行中的条目
+- **发现约定**:源树内 `META-INF/services/io.jcordis.core.registry.Plugin` 声明优先(镜像 jar 路径);否则源码中恰一个具体 Plugin 实现自动选取,零个/多个报清晰错误;父类路径可见的类不计入(仅 fresh loader 自身定义的类)
+- 运行时需 JDK(裸 JRE 无系统编译器,报清晰错误);诊断经 DiagnosticCollector 收集,编译失败异常携带全部错误行
+
+### 测试(388 → 394)
+
+`SourcePluginTest` 6 例:编译加载运行、replaceSource 行为热切换(v1→v2 探针)、坏源码不动运行条目(stage 1 隔离)、无实现报错、多实现要求 SPI 声明(SPI 选择生效)、目录缺失报错。顺带修复一个顺序不稳定测试(%o JSON 断言的 Map.of 无序迭代 → LinkedHashMap)。
+
+```
+Tests run: 394, Failures: 0（388 → 394）
+Reactor: 11/11 模块 SUCCESS, BUILD SUCCESS
+mvn -Pformat spotless:check -- BUILD SUCCESS
+```

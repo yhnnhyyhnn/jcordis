@@ -14,7 +14,6 @@ class JmhRunnerTest {
 
     @Test
     @Disabled("run explicitly with -Pbenchmark -Dtest=JmhRunnerTest")
-
     void runAllBenchmarks() throws Exception {
         Options options = new OptionsBuilder()
                 .include(".*JmhBenchmarks.*")

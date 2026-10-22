@@ -50,8 +50,8 @@
 
 | 功能 | Cordis 机制 | jcordis 状态 | 说明 |
 |---|---|---|---|
-| 动态模块加载 | Node ESM `import()` + ModuleLoader | SPI 注册表（builtins/modules） | `Loader.importPlugin(name)` 查表；动态编译列为增强项 |
-| HMR 插件源码热重载 | V8 模块缓存清除 + re-import | 仅文件变更回调 → 树 diff 重载（`Hmr.watch()` + 便捷 config 重载） | Java 无法动态重编译类 |
+| 动态模块加载 | Node ESM `import()` + ModuleLoader | SPI 注册表（builtins/modules）+ **源码动态编译**（2026-10-22）：`Loader.loadSource(dir, name)` 用系统 javac 编译源码目录为一次性类目录（loader 关闭即删除）；`replaceSource` 与 jar 路径共用三阶段热替换；发现约定为源树 SPI 声明优先、否则恰一个 Plugin 实现（需 JDK 运行时） |
+| HMR 插件源码热重载 | V8 模块缓存清除 + re-import | `Hmr.watch()` + 便捷 config 重载；**源码/类热替换**经 `replaceSource`/`replaceJar`（新类加载器整体换血，非原地重定义） | Java 无法原地重定义运行中的类——字节码级热替换（agent/Instrumentation）列为远期增强 |
 | 配置表达式求值 | `with(ctx){eval()}` | **纯数据插值**（方案 A） | 安全决策：不执行任意表达式，预留 Evaluator 接口 |
 | isolate Realm 完整语义 | LocalRealm/GlobalRealm 7 步切换 + 服务 impl 迁移 | LocalRealm/GlobalRealm + realm GC（partial-dispose 消费）+ **isolate 变更走插件重启**（副作用重执行，非 impl 原地迁移）；服务 impl 原地迁移未实现 | 参考用 prototype 原地交换，jcordis 为不可变 ctx 拷贝模型 |
 | `internal/get`/`internal/set` 瀑布 | 完整 waterfall 链 | ✅ 已实现（见第一节；尾端语义与参考一致） | 2026-08 对齐修正 |

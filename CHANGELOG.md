@@ -2,6 +2,11 @@
 
 ## 1.0.4-SNAPSHOT（未发布）
 
+### 新功能：源码目录的动态编译加载与热替换
+
+- **`Loader.loadSource(dir, name)`**：系统 javac 编译插件源码目录为一次性类目录（loader 关闭自动删除），按约定发现插件——源树 SPI 声明优先，否则恰一个 `Plugin` 实现自动选取（需 JDK 运行时，编译诊断随异常携带）
+- **`Loader.replaceSource(dir, name)`**：与 `replaceJar` 共用三阶段热替换（抽取 `swapPlugin`）；坏源码在编译期失败，不触碰运行中的条目
+
 ### 修复（三方报告）
 
 - **fiber 链行走的隔离域穿透**（majo 报告，#209 对齐补全）：隔离域内 `ctx.get` 沿父链行走时命中**异域祖先的解析快照**——泄漏从 fallback 层挪到了 walk 层。修复：快照与 inject 声明均仅在同隔离域的 fiber 上生效；fallback 保持按访问者键解析（`IsolateWalkLeakTest` 回归）
