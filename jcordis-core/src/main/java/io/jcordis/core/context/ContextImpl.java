@@ -134,22 +134,33 @@ public final class ContextImpl implements Context {
         // each fiber's local resolution snapshot first, then its inject
         // declarations — a declared-but-unresolved dependency fails loudly
         // instead of leaking a null (mirrors Cordis's required-service walk;
-        // a root-level or never-injected name stays a lenient lookup). The
-        // fallback resolves strictly from THIS context's isolation key, so a
-        // realm only ever sees its own impls — the isolation-boundary leak
-        // Cordis fixed in its proxy walk (#209) cannot occur here
+        // a root-level or never-injected name stays a lenient lookup). A
+        // fiber's snapshot is keyed by ITS OWN context's isolation key: when
+        // the caller sits behind an isolation boundary, an ancestor's
+        // snapshot resolved under a different key is invisible — without the
+        // key check the walk would leak across realms even though the
+        // fallback resolves strictly from the caller's key (mirrors Cordis #209)
         return (T) events().waterfall((Object) null, "internal/get", new Object[] {this, name}, args -> {
             Fiber f = fiber();
             if (f.runtime() == null) {
                 return reflect().get(name, this);
             }
+            Object key = isolateKey(name);
             for (; f != null; f = f.parent()) {
-                Object local = f.localValue(name);
-                if (local != null) {
-                    return local;
-                }
-                if (f.inject().containsKey(name)) {
-                    throw new IllegalStateException("cannot get required service \"" + name + "\" in inactive context");
+                // only fibers in the caller's own isolation realm contribute:
+                // their resolution snapshot when present, their inject
+                // declaration when unresolved. An ancestor behind a boundary
+                // has neither — its snapshot was resolved under another key
+                // and its dependency declaration does not govern this realm
+                if (java.util.Objects.equals(f.ctx().isolateKey(name), key)) {
+                    Object local = f.localValue(name);
+                    if (local != null) {
+                        return local;
+                    }
+                    if (f.inject().containsKey(name)) {
+                        throw new IllegalStateException(
+                                "cannot get required service \"" + name + "\" in inactive context");
+                    }
                 }
             }
             return reflect().get(name, this);

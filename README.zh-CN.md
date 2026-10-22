@@ -160,7 +160,7 @@ app.yml kept: file-wins (the runtime update was discarded)
 ## 构建与测试
 
 ```bash
-mvn clean verify   # 11/11 模块，387 测试全绿
+mvn clean verify   # 11/11 模块，388 测试全绿
 mvn -Pcoverage clean verify   # jacoco 覆盖率门禁（LINE >= 80%、BRANCH >= 60%）
 mvn -Pbenchmark -pl jcordis-core test -Dtest=JmhRunnerTest   # JMH 基准
 ```

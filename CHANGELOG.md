@@ -2,6 +2,10 @@
 
 ## 1.0.4-SNAPSHOT（未发布）
 
+### 修复（三方报告）
+
+- **fiber 链行走的隔离域穿透**（majo 报告，#209 对齐补全）：隔离域内 `ctx.get` 沿父链行走时命中**异域祖先的解析快照**——泄漏从 fallback 层挪到了 walk 层。修复：快照与 inject 声明均仅在同隔离域的 fiber 上生效；fallback 保持按访问者键解析（`IsolateWalkLeakTest` 回归）
+
 ### 功能对齐：logger 一族三项
 
 - **`%o`/`%O` 按 JSON 渲染**（对齐 `JSON.stringify` formatter）：字符串加引号、Map/数组/Iterable 展开；深度上限防循环（缩写 `…`，日志调用永不失败）

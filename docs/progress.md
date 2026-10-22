@@ -1662,3 +1662,23 @@ Tests run: 387, Failures: 0（382 → 387）
 Reactor: 11/11 模块 SUCCESS, BUILD SUCCESS
 mvn -Pformat spotless:check -- BUILD SUCCESS
 ```
+
+## 修复:fiber 链行走的隔离域穿透(三方 majo 报告,2026-10-22)
+
+majo 升级到 1.0.4-SNAPSHOT 后报告:`Context.get` 的 fiber 链行走层存在隔离穿透——访问者位于隔离域内时,父链上**异域 fiber 的解析快照**(`localValue`)未按隔离键过滤,直接命中(泄漏只是从 fallback 层挪到了 walk 层)。其 `SubagentSeamTest` 可复现(scope.get 返回根实例)。
+
+### 复现与修复
+
+- 复现测试 `IsolateWalkLeakTest`:宿主插件 inject 服务(其 fiber 携带默认键下的快照)→ 从宿主 ctx 派生隔离域并提供影子 → 域内插件 `get` 返回根实例(修复前红:`root-loop`)
+- 修复:walk 中 fiber 的快照与 **inject 声明**都仅在同隔离域(`f.ctx().isolateKey(name)` 与访问者一致)时生效——异域祖先的快照按别的键解析、其依赖声明不治理当前域;fallback 仍严格按访问者键解析
+- 第一版修复(仅过滤快照、声明仍全链检查)被复现测试自身抓出:异域宿主的 inject 声明会误触发 `cannot get required service`——声明检查一并纳入同域分支
+
+### 致谢与影响
+
+感谢 majo 的精确报告与最小复现指引;其侧已改为直接持有服务实例(两种解析语义下都正确),不受本修复影响。`bc9a344` 在 compatibility.md 的"已等价"判定修正为"walk 层需隔离过滤"(即本修复)。
+
+```
+Tests run: 388, Failures: 0（387 → 388）
+Reactor: 11/11 模块 SUCCESS, BUILD SUCCESS
+mvn -Pformat spotless:check -- BUILD SUCCESS
+```
