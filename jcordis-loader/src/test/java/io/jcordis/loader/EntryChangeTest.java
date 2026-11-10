@@ -96,14 +96,15 @@ class EntryChangeTest {
 
         loader.transfer("a", "g");
 
-        // moving across trees reports twice (mirrors Cordis): the source tree
-        // sees a removal, the target tree sees the moved entry
+        // moving across trees reports twice (mirrors Cordis #271): the source
+        // tree sees a removal, the target tree sees a creation (it now owns
+        // the entry outright — an update-with-from would imply a shared view)
         assertThat(changes).hasSize(2);
         assertThat(changes.get(0).isRemoved()).isTrue();
         assertThat(changes.get(0).group).isSameAs(loader.root);
         EntryChange change = changes.get(1);
-        assertThat(change.isMoved()).isTrue();
-        assertThat(change.from).isSameAs(loader.root);
+        assertThat(change.isCreated()).isTrue();
+        assertThat(change.options).isNotNull();
         assertThat(change.group).isSameAs(loader.resolveGroup("g"));
     }
 

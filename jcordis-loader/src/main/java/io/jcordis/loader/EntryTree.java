@@ -140,8 +140,13 @@ public abstract class EntryTree {
         Entry entry = resolve(id);
         EntryGroup source = entry.parent;
         EntryOptions legacy = entry.options.copy();
+        boolean crossTree = false;
         if (parent != null) {
             EntryGroup target = resolveGroup(parent);
+            crossTree = target.tree != source.tree;
+            if (crossTree) {
+                transferOwnership(entry, target.tree);
+            }
             source.unlink(entry.options);
             target.data.add(entry.options);
             entry.parent = target;
@@ -149,12 +154,7 @@ public abstract class EntryTree {
         // `Entry.update` assigns the new options before it returns, so the
         // change is fully visible to `commit()` (mirrors Cordis's ordering)
         entry.update(options, false, true);
-        EntryGroup group = entry.parent;
-        if (group.tree != source.tree) {
-            source.tree.commit(EntryChange.removed(legacy.id, source, legacy));
-        }
-        group.tree.commit(
-                EntryChange.updated(legacy.id, group, group == source ? null : source, entry.options, legacy));
+        commitMove(entry, source, legacy, crossTree);
     }
 
     /**
@@ -167,15 +167,51 @@ public abstract class EntryTree {
         EntryGroup source = entry.parent;
         EntryGroup target = parent == null ? root : resolveGroup(parent);
         EntryOptions legacy = entry.options.copy();
+        boolean crossTree = target.tree != source.tree;
+        if (crossTree) {
+            transferOwnership(entry, target.tree);
+        }
         source.unlink(entry.options);
         target.data.add(entry.options);
         entry.parent = target;
         entry.update(new EntryOptions(), false, true);
-        if (target.tree != source.tree) {
+        commitMove(entry, source, legacy, crossTree);
+    }
+
+    /**
+     * Reports a completed move: within one tree the change is an update
+     * (carrying {@code from} for a group change); across trees it is a removal
+     * to the source tree and a creation to the target tree — the moved entry
+     * now belongs to the target alone (mirrors Cordis #271).
+     */
+    private void commitMove(Entry entry, EntryGroup source, EntryOptions legacy, boolean crossTree) {
+        EntryGroup group = entry.parent;
+        if (crossTree) {
             source.tree.commit(EntryChange.removed(legacy.id, source, legacy));
+            group.tree.commit(EntryChange.created(entry.options.id, group, entry.options));
+        } else {
+            group.tree.commit(
+                    EntryChange.updated(legacy.id, group, group == source ? null : source, entry.options, legacy));
         }
-        target.tree.commit(
-                EntryChange.updated(legacy.id, target, target == source ? null : source, entry.options, legacy));
+    }
+
+    /**
+     * Transfers the entry from this tree's store into the target tree's: a
+     * cross-tree move hands over ownership, so the target adopts the live
+     * entry instead of creating a duplicate when it reconciles its source,
+     * and the source stops resolving an id it no longer owns (mirrors Cordis
+     * #271). Only the entry itself moves — in jcordis every group owns a
+     * subtree instance, so a nested group's members travel with that subtree
+     * (and stay reachable through the entry), exactly like Cordis's
+     * same-tree membership rule degenerating to the entry alone.
+     */
+    private static void transferOwnership(Entry entry, EntryTree target) {
+        EntryTree source = entry.parent.tree;
+        if (target.store.get(entry.options.id) != null) {
+            throw new IllegalArgumentException("entry " + entry.options.id + " already exists in the target tree");
+        }
+        source.store.remove(entry.options.id);
+        target.store.put(entry.options.id, entry);
     }
 
     /** Resolves the plugin body for the given entry name. */

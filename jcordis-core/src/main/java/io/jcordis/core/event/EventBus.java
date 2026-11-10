@@ -155,7 +155,19 @@ public final class EventBus {
         // (mirrors Cordis's findIndex + splice). The one-shot latch inside the
         // atomically-locked removeIf keeps concurrent unregisters safe.
         AtomicBoolean firstMatch = new AtomicBoolean(true);
-        boolean removed = target.removeIf(hook -> hook.callback() == callback && firstMatch.compareAndSet(true, false));
+        List<Hook> matched = new ArrayList<>();
+        boolean removed = target.removeIf(hook -> {
+            if (hook.callback() == callback && firstMatch.compareAndSet(true, false)) {
+                matched.add(hook);
+                return true;
+            }
+            return false;
+        });
+        // flag the removed registration: an in-flight dispatch holding a
+        // snapshot of the list must see the removal (mirrors Cordis #242)
+        for (Hook hook : matched) {
+            hook.removed = true;
+        }
         if (removed && target.isEmpty()) {
             // drop empty lists so dynamically named events do not accumulate
             // in the hook table (mirrors Cordis's `delete this._hooks[name]`);
@@ -168,7 +180,7 @@ public final class EventBus {
 
     // ----- dispatch -----
 
-    private List<EventHandler> resolve(String mode, String name, Object thisArg, Object[] args) {
+    private List<Hook> resolve(String mode, String name, Object thisArg, Object[] args) {
         if (!name.startsWith("internal/")
                 && !hooks.getOrDefault("internal/dispatch", List.of()).isEmpty()) {
             emit((Object) null, "internal/dispatch", mode, name, args, thisArg);
@@ -178,24 +190,26 @@ public final class EventBus {
         if (candidates == null) {
             return List.of();
         }
-        List<EventHandler> callbacks = new ArrayList<>();
+        List<Hook> snapshot = new ArrayList<>();
         for (Hook hook : candidates) {
             if (hook.global() || filter == null || filter.test(hook.ctx())) {
-                callbacks.add(hook.callback());
+                snapshot.add(hook);
             }
         }
-        return callbacks;
+        return snapshot;
     }
 
     public void emit(Object thisArg, String name, Object... args) {
-        for (EventHandler callback : resolve("emit", name, thisArg, args)) {
-            callback.invoke(thisArg, args);
+        for (Hook hook : resolve("emit", name, thisArg, args)) {
+            if (hook.removed) continue;
+            hook.callback().invoke(thisArg, args);
         }
     }
 
     public Object bail(Object thisArg, String name, Object... args) {
-        for (EventHandler callback : resolve("bail", name, thisArg, args)) {
-            Object result = callback.invoke(thisArg, args);
+        for (Hook hook : resolve("bail", name, thisArg, args)) {
+            if (hook.removed) continue;
+            Object result = hook.callback().invoke(thisArg, args);
             if (isBailed(result)) {
                 return result;
             }
@@ -204,15 +218,17 @@ public final class EventBus {
     }
 
     public CompletableFuture<Void> parallel(Object thisArg, String name, Object... args) {
-        List<EventHandler> callbacks = resolve("parallel", name, thisArg, args);
+        List<Hook> callbacks = resolve("parallel", name, thisArg, args);
         if (callbacks.isEmpty()) {
             return CompletableFuture.completedFuture(null);
         }
         List<CompletableFuture<Object>> futures = new ArrayList<>();
-        for (EventHandler callback : callbacks) {
+        for (Hook hook : callbacks) {
             CompletableFuture<Object> future = new CompletableFuture<>();
             try {
-                Object result = callback.invoke(thisArg, args);
+                // a member disposed between snapshot and its turn is skipped,
+                // not invoked (mirrors Cordis #242)
+                Object result = hook.removed ? null : hook.callback().invoke(thisArg, args);
                 if (result instanceof CompletableFuture<?> pending) {
                     pending.whenComplete((value, error) -> {
                         if (error != null) {
@@ -249,17 +265,17 @@ public final class EventBus {
     }
 
     public CompletableFuture<Object> serial(Object thisArg, String name, Object... args) {
-        List<EventHandler> callbacks = resolve("serial", name, thisArg, args);
+        List<Hook> callbacks = resolve("serial", name, thisArg, args);
         AtomicBoolean stopped = new AtomicBoolean(false);
         AtomicReference<Object> result = new AtomicReference<>();
         CompletableFuture<Void> chain = CompletableFuture.completedFuture(null);
-        for (EventHandler callback : callbacks) {
+        for (Hook hook : callbacks) {
             chain = chain.thenCompose(ignored -> {
-                if (stopped.get()) {
+                if (stopped.get() || hook.removed) {
                     return CompletableFuture.completedFuture(null);
                 }
                 try {
-                    Object value = callback.invoke(thisArg, args);
+                    Object value = hook.callback().invoke(thisArg, args);
                     CompletableFuture<Object> pending = value instanceof CompletableFuture<?> future
                             ? cast(future)
                             : CompletableFuture.completedFuture(value);
@@ -278,7 +294,7 @@ public final class EventBus {
     }
 
     public Object waterfall(Object thisArg, String name, Object[] args, Function<Object[], Object> inner) {
-        List<EventHandler> callbacks = new ArrayList<>(resolve("waterfall", name, thisArg, args));
+        List<Hook> callbacks = new ArrayList<>(resolve("waterfall", name, thisArg, args));
         return dispatch(callbacks, thisArg, args, inner);
     }
 
@@ -286,14 +302,18 @@ public final class EventBus {
      * Dispatches one waterfall stage. Each listener receives its <em>own</em>
      * {@code next} guarded so it can only be invoked once — a second call
      * throws (mirrors Cordis's waterfall continuation guard): a listener that
-     * calls {@code next()} twice would otherwise re-enter the chain.
+     * calls {@code next()} twice would otherwise re-enter the chain. A member
+     * disposed after the snapshot passes the buck straight to {@code next}
+     * (mirrors Cordis #242).
      */
-    private Object dispatch(
-            List<EventHandler> callbacks, Object thisArg, Object[] args, Function<Object[], Object> inner) {
+    private Object dispatch(List<Hook> callbacks, Object thisArg, Object[] args, Function<Object[], Object> inner) {
         if (callbacks.isEmpty()) {
             return inner.apply(args);
         }
-        EventHandler callback = callbacks.remove(0);
+        Hook hook = callbacks.remove(0);
+        if (hook.removed) {
+            return dispatch(callbacks, thisArg, args, inner);
+        }
         Object[] chainArgs = Arrays.copyOf(args, args.length + 1);
         AtomicBoolean called = new AtomicBoolean(false);
         chainArgs[chainArgs.length - 1] = (Supplier<Object>) () -> {
@@ -302,7 +322,7 @@ public final class EventBus {
             }
             return dispatch(callbacks, thisArg, args, inner);
         };
-        return callback.invoke(thisArg, chainArgs);
+        return hook.callback().invoke(thisArg, chainArgs);
     }
 
     static boolean isBailed(Object value) {

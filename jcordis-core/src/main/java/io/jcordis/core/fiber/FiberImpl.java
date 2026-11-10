@@ -44,15 +44,19 @@ public final class FiberImpl implements Fiber {
     private final List<EffectMeta> effectMetas = new ArrayList<>();
     private final AtomicBoolean disposed = new AtomicBoolean(false);
     private final Map<String, List<EventHandler>> hooks = new ConcurrentHashMap<>();
-    private final Map<String, Object> inject = new HashMap<>();
+    /** Dependency declarations; replaced wholesale by {@link #replaceRuntime}. */
+    private volatile Map<String, Object> inject = new HashMap<>();
     /**
      * Dependency resolution cache. Concurrent: providers may notify (and thus
      * re-check) consumers from arbitrary threads, so concurrent checkImpl()
      * writes and refresh() reads must be safe.
      */
     private final Map<String, Impl> store = new ConcurrentHashMap<>();
+    /** Services this fiber provides (registered/unregistered with the impl). */
+    private final List<Impl> provisions = new java.util.concurrent.CopyOnWriteArrayList<>();
 
-    private final PluginRuntime runtime;
+    /** The runtime this fiber executes; swapped in place by {@link #replaceRuntime}. */
+    private volatile PluginRuntime runtime;
 
     /**
      * Monitor lock guarding the effect collections (concurrency pattern).
@@ -213,6 +217,52 @@ public final class FiberImpl implements Fiber {
     @Override
     public void rebindContext(Context ctx) {
         this.ctx = ctx.child(this);
+    }
+
+    /** Registers a service provided by this fiber (called by ReflectService.provide). */
+    public void addProvision(Impl impl) {
+        provisions.add(impl);
+    }
+
+    /** Unregisters a provision (called when the provide is disposed). */
+    public void removeProvision(Impl impl) {
+        provisions.remove(impl);
+    }
+
+    /**
+     * Swaps the executed plugin in place, keeping the fiber (and its position
+     * in the context tree) alive: the runtime membership moves to {@code
+     * runtime}, the inject declarations are replaced wholesale, the fiber
+     * context is rebuilt (the new inject may carry configs as intercepts,
+     * exactly like construction) and the dependency epoch is bumped so the
+     * new body loads on the next refresh (mirrors Cordis's {@code _replace}).
+     */
+    public void replaceRuntime(PluginRuntime runtime, Map<String, Object> inject) {
+        if (runtime != this.runtime) {
+            this.runtime.fibers().remove(this);
+            runtime.fibers().add(this);
+            this.runtime = runtime;
+        }
+        this.inject = new HashMap<>(inject);
+        // rebuild the fiber context from the definition parent, applying the
+        // new inject configs as intercepts (the constructor builds it the
+        // same way)
+        Context rebuilt = parent.ctx().child(this);
+        for (Map.Entry<String, Object> entry : inject.entrySet()) {
+            if (entry.getValue() != null) {
+                rebuilt = rebuilt.intercept(entry.getKey(), entry.getValue());
+            }
+        }
+        this.ctx = rebuilt;
+        ctx.events().emit((Object) null, "internal/replace", this);
+        // re-resolve the dependencies of the new declaration
+        store.clear();
+        for (String name : inject.keySet()) {
+            checkImpl(name);
+        }
+        error = null;
+        revision++;
+        refresh();
     }
 
     @Override
@@ -597,7 +647,9 @@ public final class FiberImpl implements Fiber {
     }
 
     private void notifyServices() {
-        for (Impl impl : ctx.reflect().providedBy(this)) {
+        // the fiber's own provision list, not a scan of the global store:
+        // fibers go ACTIVE often, the store can be large (mirrors Cordis #277)
+        for (Impl impl : provisions) {
             ctx.reflect().notify(List.of(impl.name()), ctx);
         }
     }

@@ -2,6 +2,13 @@
 
 ## 1.0.4-SNAPSHOT（未发布）
 
+### cordis 2026-11 第三批上游对齐（`34c8ac5..b38ef58`，4 项移植）
+
+- **`RegistryService.replace(old, new)` 原地插件替换**（`74b7905`）：fiber 存活换血（新 body/inject/上下文重建/依赖重解析），旧引用经 aliases 转发（`has`/`get`/`delete` 直达替代者），发 `internal/replace` 事件
+- **dispatch 快照尊重监听器移除**（`2bca227`）：异步派发与 waterfall 链进行中被 dispose 的成员跳过（waterfall 透传 next），不再调用已移除的监听器
+- **跨树移动转移所有权**（`bb3bf8a`）：条目在根树与 group 子树间移动时 store 所有权转移；commit 报 removed + created；消除了"移入 group 的条目留在根 store"的历史不一致
+- **notifyServices 只扫自身 provisions**（`e708b90`）：fiber 每次 ACTIVE 的服务通知从全 store 扫描降为自身列表
+
 ### 新功能：源码目录的动态编译加载与热替换
 
 - **`Loader.loadSource(dir, name)`**：系统 javac 编译插件源码目录为一次性类目录（loader 关闭自动删除），按约定发现插件——源树 SPI 声明优先，否则恰一个 `Plugin` 实现自动选取（需 JDK 运行时，编译诊断随异常携带）

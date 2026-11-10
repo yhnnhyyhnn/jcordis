@@ -47,8 +47,9 @@ class LoaderTransferTest {
 
         loader.transfer("foo", "outer");
 
-        // the entry is re-parented; its id now carries the group prefix
-        Entry moved = loader.store.get("foo");
+        // the entry is re-parented; its id now carries the group prefix.
+        // Ownership followed the cross-tree move: resolve through the group
+        Entry moved = loader.resolve("outer:foo");
         assertThat(moved.parent).isSameAs(loader.resolveGroup("outer"));
         assertThat(moved.id()).isEqualTo("outer:foo");
         assertThat(loader.locate(moved.fiber)).isEqualTo("outer:foo");
@@ -77,10 +78,10 @@ class LoaderTransferTest {
         // moving under a disabled group disposes the entry's fiber
         loader.transfer("foo", "g2");
         assertThat(disposes).hasValue(1);
-        assertThat(loader.store.get("foo").fiber).isNull();
+        assertThat(loader.resolve("g2:foo").fiber).isNull();
 
         // moving it back to the root re-enables it
-        loader.transfer("foo", null);
+        loader.transfer("g2:foo", null);
         assertThat(calls).hasValue(2);
         assertThat(loader.store.get("foo").id()).isEqualTo("foo");
     }
@@ -105,7 +106,9 @@ class LoaderTransferTest {
         // moving the entry keeps its config and isolate options
         loader.transfer("svc", "outer");
         assertThat(seen.get()).isEqualTo(Map.of("v", 1));
-        assertThat(loader.store.get("svc").options.isolate).isEqualTo(Map.of("db", "shared"));
-        assertThat(loader.store.get("svc").options.config).isEqualTo(Map.of("v", 1));
+        // ownership followed the move: the entry resolves through the group
+        Entry moved = loader.resolve("outer:svc");
+        assertThat(moved.options.isolate).isEqualTo(Map.of("db", "shared"));
+        assertThat(moved.options.config).isEqualTo(Map.of("v", 1));
     }
 }

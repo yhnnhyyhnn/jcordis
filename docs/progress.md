@@ -1703,3 +1703,24 @@ Tests run: 394, Failures: 0（388 → 394）
 Reactor: 11/11 模块 SUCCESS, BUILD SUCCESS
 mvn -Pformat spotless:check -- BUILD SUCCESS
 ```
+
+## 对照 cordis:2026-11 第三批上游(c261dd2..34c8ac5 之后的 34c8ac5..b38ef58,2026-11-10)
+
+24 提交:**4 项移植、20 项不适用**(hmr 大重构系依赖 ESM 模块图/fs 包、evaluate 系依赖 js-expr/位置追踪、fs-node/watch、package-manager、DisposableList.unshift(已删死代码)、async generator、chore/docs;92ebba5 已等价(异常仅在失败点构造)、b109a1a 已等价(instanceof String 接受空串))。
+
+### 移植项
+
+1. **`2bca227`(#242)dispatch 快照尊重监听器移除**:异步派发(serial/parallel)或 waterfall 链进行中,已被 dispose 的快照成员不再被调用(waterfall 直接透传 next)。Hook 改为可变 `removed` 标志(unregister 时打标,五种派发模式检查)
+2. **`e708b90`(#277)notifyServices 只扫自身**:FiberImpl 维护 provisions 列表(provide 登记/注销维护),fiber 每次 ACTIVE 的服务通知不再全 store 扫描;providedBy 死代码删除
+3. **`bb3bf8a`(#271)跨树移动转移所有权**:条目在树间移动(根 ↔ group 子树)时 store 所有权转移(源删/目标收养,重复 id 报错);commit 语义改为源树报 removed + 目标树报 created(替代 updated-with-from)。jcordis 模型适配:每个 group 自带 subtree 实例,cordis 的"同树成员递归"在此退化为"仅条目自身"(嵌套 subtree 随行、经条目可达)——与既有测试固化的"移入 group 留根 store"的**不一致**行为决裂(受影响断言已按新语义改写)
+4. **`74b7905`(#266)`RegistryService.replace` 原地插件替换**:fiber 存活换血——runtime 成员迁移、inject 声明整体替换、fiber 上下文重建(新 inject 配置固化为 intercept,与构造一致)、依赖重解析、revision 重载;`internal/replace` 事件;被替换的旧引用经 **aliases 转发**(has/get/delete 直达替代者);FiberImpl 的 runtime/inject 去 final
+
+### 测试(394 → 403)
+
+`RegistryReplaceTest` 5(换血执行/inject 切换/internal-replace 事件/别名删除/未注册报错)、`CrossTreeMoveTest` 2(所有权转移+removed/created、嵌套组随行)、`EventBusEdgeTest` +2(waterfall 透移除级、serial 回归);EntryChangeTest/LoaderTransferTest 的 3 处断言随新语义更新。
+
+```
+Tests run: 403, Failures: 0（394 → 403）
+Reactor: 11/11 模块 SUCCESS, BUILD SUCCESS
+mvn -Pformat spotless:check -- BUILD SUCCESS
+```

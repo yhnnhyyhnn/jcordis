@@ -112,11 +112,19 @@ public final class ReflectService {
                                 throw new IllegalStateException("service \"" + name + "\" has been registered at <"
                                         + existing.fiber().name() + ">");
                             }
+                            // the provider's own list spares every fiber-activation
+                            // a scan of the global store (mirrors Cordis #277)
+                            if (source.fiber() instanceof io.jcordis.core.fiber.FiberImpl owner) {
+                                owner.addProvision(impl);
+                            }
                             if (source.fiber().state() == FiberState.ACTIVE) {
                                 notify(List.of(name), source);
                             }
                             return io.jcordis.core.fiber.EffectResult.of(() -> {
                                 store.remove(key, impl);
+                                if (source.fiber() instanceof io.jcordis.core.fiber.FiberImpl owner) {
+                                    owner.removeProvision(impl);
+                                }
                                 notify(List.of(name), source);
                             });
                         },
@@ -162,10 +170,5 @@ public final class ReflectService {
             }
             props.put(key, "accessor");
         }
-    }
-
-    /** All impls provided by the given fiber (for ACTIVE-state notifications). */
-    public List<Impl> providedBy(Fiber fiber) {
-        return store.values().stream().filter(impl -> impl.fiber() == fiber).toList();
     }
 }

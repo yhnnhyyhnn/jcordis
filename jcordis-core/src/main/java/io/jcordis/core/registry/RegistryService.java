@@ -21,6 +21,9 @@ public final class RegistryService {
 
     private final Context ctx;
     private final Map<Plugin, PluginRuntime> internal = new ConcurrentHashMap<>();
+    /** Replaced-away plugin keys forwarding to their replacement's key. */
+    private final Map<Plugin, Plugin> aliases = new ConcurrentHashMap<>();
+
     private final java.util.concurrent.atomic.AtomicInteger counter = new java.util.concurrent.atomic.AtomicInteger();
 
     public RegistryService(Context ctx) {
@@ -36,24 +39,72 @@ public final class RegistryService {
         return internal.size();
     }
 
+    /** Follows alias chains (a replaced-away key forwards to its replacement). */
+    private Plugin forward(Plugin plugin) {
+        Plugin key = plugin;
+        Plugin next;
+        while ((next = aliases.get(key)) != null) {
+            key = next;
+        }
+        return key;
+    }
+
     public boolean has(Plugin plugin) {
-        return internal.containsKey(plugin);
+        return internal.containsKey(forward(plugin));
     }
 
     public PluginRuntime get(Plugin plugin) {
-        return internal.get(plugin);
+        return internal.get(forward(plugin));
     }
 
     /** Removes the runtime and disposes every fiber created from the plugin. */
     public PluginRuntime delete(Plugin plugin) {
-        PluginRuntime runtime = internal.remove(plugin);
+        PluginRuntime runtime = internal.remove(forward(plugin));
         if (runtime == null) return null;
+        // drop aliases pointing at the removed key, and the removed key's own
+        aliases.values().removeIf(target -> target == runtime.callback());
+        aliases.remove(runtime.callback());
         for (Fiber fiber : List.copyOf(runtime.fibers())) {
             // disposal runs synchronously on the calling thread — no waiting
             // (mirrors Cordis, whose delete never blocks on disposal)
             fiber.disposeAsync();
         }
         return runtime;
+    }
+
+    /**
+     * Replaces every fiber of {@code oldPlugin} with {@code newPlugin} in
+     * place: fibers stay alive and keep their position in the context tree,
+     * but execute the new body under the new inject declarations (mirrors
+     * Cordis's {@code registry.replace}). The old plugin reference keeps
+     * working through an alias — {@code has}/{@code get}/{@code delete} on it
+     * forward to the replacement.
+     *
+     * @return the fibers that were re-targeted
+     */
+    public List<Fiber> replace(Plugin oldPlugin, Plugin newPlugin) {
+        Plugin oldKey = forward(oldPlugin);
+        PluginRuntime runtime = internal.get(oldKey);
+        if (runtime == null) {
+            throw new IllegalArgumentException("cannot replace a plugin that is not registered: " + oldPlugin);
+        }
+        PluginRuntime target = internal.get(newPlugin);
+        // replacing back onto an existing alias target breaks the cycle
+        aliases.remove(newPlugin);
+        if (oldKey != newPlugin) {
+            internal.remove(oldKey);
+            aliases.put(oldKey, newPlugin);
+        }
+        List<Fiber> fibers = List.copyOf(runtime.fibers());
+        if (fibers.isEmpty()) return fibers;
+        if (target == null) {
+            target = new PluginRuntime(newPlugin.name(), newPlugin);
+            internal.put(newPlugin, target);
+        }
+        for (Fiber fiber : fibers) {
+            ((io.jcordis.core.fiber.FiberImpl) fiber).replaceRuntime(target, newPlugin.inject());
+        }
+        return fibers;
     }
 
     public Set<Plugin> keys() {

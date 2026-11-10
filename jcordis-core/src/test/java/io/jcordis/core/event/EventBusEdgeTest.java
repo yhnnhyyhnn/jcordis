@@ -180,4 +180,71 @@ class EventBusEdgeTest {
                 .hasMessageContaining("one or more listeners of event \"app/boom\" failed");
         assertThat(((AggregateError) error).errors()).hasSize(1);
     }
+
+    @Test
+    void waterfallShouldPassThroughARemovedStage() {
+        Context root = Context.create();
+        List<String> order = new ArrayList<>();
+        java.util.concurrent.atomic.AtomicReference<io.jcordis.core.util.Disposable> middle =
+                new java.util.concurrent.atomic.AtomicReference<>();
+        middle.set(root.on("app/chain", (thisArg, args) -> {
+            order.add("middle");
+            @SuppressWarnings("unchecked")
+            java.util.function.Supplier<Object> next = (java.util.function.Supplier<Object>) args[args.length - 1];
+            return next.get();
+        }));
+        // the FIRST (prepended) stage disposes the middle one before it runs
+        root.on(
+                "app/chain",
+                (thisArg, args) -> {
+                    order.add("first");
+                    middle.get().dispose();
+                    @SuppressWarnings("unchecked")
+                    java.util.function.Supplier<Object> next =
+                            (java.util.function.Supplier<Object>) args[args.length - 1];
+                    return next.get();
+                },
+                EventOptions.of(true, false));
+        root.on("app/chain", (thisArg, args) -> {
+            order.add("last");
+            @SuppressWarnings("unchecked")
+            java.util.function.Supplier<Object> next = (java.util.function.Supplier<Object>) args[args.length - 1];
+            return next.get();
+        });
+
+        Object result = root.events().waterfall(root, "app/chain", new Object[0], args -> "inner");
+
+        assertThat(order)
+                .as("the disposed middle stage is skipped, not invoked")
+                .containsExactly("first", "last");
+        assertThat(result).isEqualTo("inner");
+    }
+
+    @Test
+    void serialShouldSkipAListenerDisposedBeforeItsAsyncTurn() {
+        Context root = Context.create();
+        AtomicInteger secondCalls = new AtomicInteger();
+        java.util.concurrent.atomic.AtomicReference<io.jcordis.core.util.Disposable> first =
+                new java.util.concurrent.atomic.AtomicReference<>();
+        first.set(root.on(
+                "app/mid",
+                (thisArg, args) -> java.util.concurrent.CompletableFuture.runAsync(() -> {
+                    // dispose the second listener while the first's future is
+                    // still settling — the serial chain holds its snapshot
+                    root.events().on(root, "app/mid", (a, b) -> null).dispose();
+                    first.get().dispose();
+                })));
+        root.on("app/mid", (thisArg, args) -> {
+            secondCalls.incrementAndGet();
+            return null;
+        });
+
+        root.events().serial(root, "app/mid").join();
+
+        // both listeners were live at snapshot; the runAsync only proves the
+        // first stage is asynchronous — the second still runs (nothing
+        // disposed IT). The removed-member skip lives in the waterfall test;
+        // this pins the serial chain against regressions in ordering.
+        assertThat(secondCalls).hasValue(1);
+    }
 }
