@@ -289,7 +289,7 @@ class JournalBranchesTest {
         Journal.apply(data, journal, (id, key) -> key == null || key.equals("disabled"), null);
 
         assertThat(data.get(0).config).as("filtered key untouched").isEqualTo(Map.of("n", 1));
-        assertThat(data.get(0).disabled).isTrue();
+        assertThat(data.get(0).disabled).isEqualTo(true);
     }
 
     @Test

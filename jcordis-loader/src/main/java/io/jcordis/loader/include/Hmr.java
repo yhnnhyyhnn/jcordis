@@ -85,14 +85,17 @@ public final class Hmr implements Runnable {
      * path, and the registration is removed when its {@code ctx.effect} owner is
      * torn down.
      *
-     * @return a disposable that unregisters this callback
+     * @return a controllable watcher: dispose unregisters, pause/resume
+     *         suspends change delivery for this callback (mirrors Cordis's
+     *         {@code fs.watch()} returning a {@code Watcher})
      */
-    public Disposable watch(Path path, Runnable callback) {
+    public Watcher watch(Path path, Runnable callback) {
         Path target = path.toAbsolutePath().normalize();
-        return ctx.effect(
+        Watcher watcher = new Watcher(callback);
+        Disposable effect = ctx.effect(
                 runner -> {
                     watchers.computeIfAbsent(target, key -> ConcurrentHashMap.newKeySet())
-                            .add(callback);
+                            .add(watcher);
                     Object current = fingerprint(target);
                     if (current != null) {
                         lastSeen.putIfAbsent(target, current);
@@ -100,7 +103,7 @@ public final class Hmr implements Runnable {
                     return EffectResult.of(() -> {
                         Set<Runnable> callbacks = watchers.get(target);
                         if (callbacks == null) return;
-                        callbacks.remove(callback);
+                        callbacks.remove(watcher);
                         if (callbacks.isEmpty()) {
                             watchers.remove(target);
                             lastSeen.remove(target);
@@ -108,6 +111,8 @@ public final class Hmr implements Runnable {
                     });
                 },
                 "ctx.hmr.watch()");
+        watcher.ownedBy(effect);
+        return watcher;
     }
 
     /** Whether {@code path} currently has at least one registered watch. */

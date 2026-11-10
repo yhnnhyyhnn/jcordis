@@ -43,6 +43,30 @@ public class Loader extends EntryTree {
     /** Plugin jar class loaders, keyed by plugin name. */
     final Map<String, PluginClassLoader> classLoaders = new ConcurrentHashMap<>();
 
+    /**
+     * Evaluation scope for {@code ${...}} expressions in entry options:
+     * {@code env} and {@code prop} by default, replaceable wholesale for
+     * tests or embedding (the whitelisted evaluator resolves chains from it).
+     */
+    private volatile Map<String, Object> evalScope = defaultEvalScope();
+
+    public Map<String, Object> evalScope() {
+        return evalScope;
+    }
+
+    /** Replaces the expression evaluation scope (env/prop by default). */
+    public void evalScope(Map<String, Object> scope) {
+        this.evalScope = java.util.Objects.requireNonNull(scope);
+    }
+
+    private static Map<String, Object> defaultEvalScope() {
+        Map<String, Object> props = new java.util.LinkedHashMap<>();
+        for (String name : System.getProperties().stringPropertyNames()) {
+            props.put(name, System.getProperty(name));
+        }
+        return Map.of("env", System.getenv(), "prop", java.util.Collections.unmodifiableMap(props));
+    }
+
     private final Context ctx;
 
     public Loader(Context ctx) {

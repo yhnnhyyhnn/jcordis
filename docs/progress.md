@@ -1724,3 +1724,34 @@ Tests run: 403, Failures: 0（394 → 403）
 Reactor: 11/11 模块 SUCCESS, BUILD SUCCESS
 mvn -Pformat spotless:check -- BUILD SUCCESS
 ```
+
+## 功能对齐专项:配置表达式(Watcher)+ fs/hmr 理念移植(2026-11-10)
+
+回应两个方向:第三批不适用项中 fs 系/hmr 系的**功能精神**落地,以及 js-expr 裁剪的功能替代。
+
+### A. 配置表达式:白名单求值器(js-expr 的安全对齐)
+
+- **`expr/Evaluator`**:自研白名单语法(字面量/作用域属性链/比较/算术/逻辑/三元,支持 `['含.键名']` 索引)——**无方法调用、无反射、无类型引用,语法即安全边界**;弱类型语义对齐 JS 配置环境('3' == 3 数值比较、null 参与大小比较为 false)
+- **`expr/Interpolator`**:`${...}` 插值(整串单占位符保留运行时类型;`$${` 转义;深度展开 Map/List)
+- **`expr/OptionsEval`**:接入点为 options 进入树时一次求值(数据固化模型):`disabled`/`group` 接受布尔表达式字符串(`EntryOptions` 两字段 Boolean → Object);config 树与 inject/intercept/isolate 的值叶子插值;id/name 保持结构性字面
+- **`Loader.evalScope()`**:默认暴露 `env`/`prop`,可整体替换(测试/嵌入)
+- 与 cordis 的差异:求值时机(cordis 每次 resolve 动态求值;jcordis 进树时固化)与语法面(白名单 vs 任意 JS)——compatibility 记录
+
+### B. `Watcher` 对象化(fs.watch 理念)
+
+- **`Hmr.watch` 返回 `Watcher`**(implements Disposable/Runnable):`dispose` 注销;`pause`/`resume` 挂起与恢复该回调的变更投递——**pause 期间的多次变更在恢复时合并为一次触发**(批量编辑一轮重载,`5fc4328` 原子性理念的实用面);fiber 销毁仍自动清理
+
+### 实施中的两处自纠
+
+- Lexer 的 `<`/`>`/`!` 在不组成双字符运算符时 index 未推进 → 死循环耗尽 heap;三处均补消费
+- 数字/字符串弱比较初版为硬错误,配置场景('3' >= 3)不可用,改为 JS 式弱类型
+
+### 测试(403 → 416)
+
+`EvaluatorTest` 7、`OptionsEvalTest` 5(disabled 表达式两种走向/config 插值/默认 env/prop 域/经 Include 的 YAML 端到端)、`HmrWatchTest` +1(pause 合并/resume 补发/dispose 静默);4 处 disabled 字段类型放宽引发的断言适配。
+
+```
+Tests run: 416, Failures: 0
+Reactor: 11/11 模块 SUCCESS, BUILD SUCCESS
+mvn -Pformat spotless:check -- BUILD SUCCESS
+```

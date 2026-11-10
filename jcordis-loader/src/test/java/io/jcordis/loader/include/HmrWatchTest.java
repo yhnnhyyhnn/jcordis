@@ -122,4 +122,48 @@ class HmrWatchTest {
             hmr.stop();
         }
     }
+
+    @org.junit.jupiter.api.Test
+    void pauseSuspendsDeliveryAndResumeCoalescesChanges() throws Exception {
+        Path file = tempDir.resolve("paused.txt");
+        Files.writeString(file, "v1", StandardCharsets.UTF_8);
+        Context root = Context.create();
+        Hmr hmr = new Hmr(root, new Loader(root), Map.of("interval", 20));
+        AtomicInteger calls = new AtomicInteger();
+        try {
+            hmr.start();
+            Watcher watcher = hmr.watch(file, calls::incrementAndGet);
+            Files.writeString(file, "v1-initial", StandardCharsets.UTF_8);
+            waitFor(() -> calls.get() >= 1);
+            watcher.pause();
+            assertThat(watcher.isPaused()).isTrue();
+
+            // several saves while paused: they coalesce into one delivery
+            int before = calls.get();
+            Files.writeString(file, "v2", StandardCharsets.UTF_8);
+            Thread.sleep(150);
+            Files.writeString(file, "v3", StandardCharsets.UTF_8);
+            Thread.sleep(150);
+            assertThat(calls.get()).as("no delivery while paused").isEqualTo(before);
+
+            watcher.resume();
+            waitFor(() -> calls.get() > before);
+            assertThat(calls.get())
+                    .as("the piled-up changes fired exactly once")
+                    .isEqualTo(before + 1);
+
+            // live again after resume
+            int afterResume = calls.get();
+            Files.writeString(file, "v4", StandardCharsets.UTF_8);
+            waitFor(() -> calls.get() > afterResume);
+
+            watcher.dispose();
+            int afterDispose = calls.get();
+            Files.writeString(file, "v5", StandardCharsets.UTF_8);
+            Thread.sleep(150);
+            assertThat(calls.get()).as("a disposed watch delivers nothing").isEqualTo(afterDispose);
+        } finally {
+            hmr.stop();
+        }
+    }
 }

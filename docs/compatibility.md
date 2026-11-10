@@ -52,14 +52,14 @@
 |---|---|---|---|
 | 动态模块加载 | Node ESM `import()` + ModuleLoader | SPI 注册表（builtins/modules）+ **源码动态编译**（2026-10-22）：`Loader.loadSource(dir, name)` 用系统 javac 编译源码目录为一次性类目录（loader 关闭即删除）；`replaceSource` 与 jar 路径共用三阶段热替换；发现约定为源树 SPI 声明优先、否则恰一个 Plugin 实现（需 JDK 运行时） |
 | HMR 插件源码热重载 | V8 模块缓存清除 + re-import | `Hmr.watch()` + 便捷 config 重载；**源码/类热替换**经 `replaceSource`/`replaceJar`（新类加载器整体换血，非原地重定义） | Java 无法原地重定义运行中的类——字节码级热替换（agent/Instrumentation）列为远期增强 |
-| 配置表达式求值 | `with(ctx){eval()}` | **纯数据插值**（方案 A） | 安全决策：不执行任意表达式，预留 Evaluator 接口 |
+| 配置表达式求值 | `with(ctx){eval()}` | **白名单表达式求值（2026-11-10）**：`${...}` 插值进 options 的 config 树与 disabled/group 布尔，`expr/Evaluator` 固定小语法（属性链/比较/算术/逻辑/三元）——无方法调用/反射/类型引用，语法即安全边界；`Loader.evalScope()` 默认 `env`/`prop` 可替换 | 差异：求值时机为进树时一次固化（cordis 每次 resolve 动态求值）；语法面为白名单而非任意 JS |
 | isolate Realm 完整语义 | LocalRealm/GlobalRealm 7 步切换 + 服务 impl 迁移 | LocalRealm/GlobalRealm + realm GC（partial-dispose 消费）+ **isolate 变更走插件重启**（副作用重执行，非 impl 原地迁移）；服务 impl 原地迁移未实现 | 参考用 prototype 原地交换，jcordis 为不可变 ctx 拷贝模型 |
 | `internal/get`/`internal/set` 瀑布 | 完整 waterfall 链 | ✅ 已实现（见第一节；尾端语义与参考一致） | 2026-08 对齐修正 |
 | 调用者追踪（traceable） | JS Proxy + `symbols.tracker` | 未移植 | 影响：outer-caller intercept 覆盖、logger 调用栈 name 恢复不可用 |
 | `internal/status` 事件消费 | fiber 状态变化通知 | 事件已发射（`transitionState`）并由 Loader 消费（enableLogs 的 reload/unload 日志）；独立状态跟踪服务未移植 | |
 | ANSI 颜色完整格式化 | `%o` inspect、C256 色板、showDiff | ConsoleExporter 基础 ANSI + %s/%d；**%o/%O 已按 JSON 渲染（2026-10-22，手写 jsonify，循环缩写 `…` 而非抛错）**；logger intercept 的 `level` 与 `Exporter.formatters` 自定义策略已对齐；showDiff 保留基础时间差 | |
 | `interval(delay)` async iterator | JS AsyncIterable | 未移植（Java 无自然等价，记增强项；回调形态可用） | |
-| include js-expr YAML 标签 | `!js` 标签 → eval | 未移植（安全决策） | |
+| include js-expr YAML 标签 | `!js` 标签 → eval | 未移植标签形态；表达式能力经 `${...}` 插值提供（同上"配置表达式求值"行） | YAML 自定义标签需 Jackson 反序列化定制，`${}` 插值覆盖同一用例 |
 | include 文件热重载 | include.refresh() + watcher + 双向 journal 写回 | 同（`Hmr` 轮询 + `Include` journal 写回）；patch 变更不回写 patch（patch 拥有项的变化不落盘） | 写回前只把 **ENOENT** 当"文件缺失等待"，其他读失败上抛（对齐 #171） |
 | Maven Archetype | | 未做（选方案 A：内嵌模板 CLI） | |
 

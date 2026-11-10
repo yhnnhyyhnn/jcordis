@@ -25,7 +25,9 @@ public final class EntryGroup {
         String id = tree.ensureId(options);
         Entry entry = tree.store.computeIfAbsent(id, key -> new Entry(this));
         entry.parent = this;
-        entry.update(options, true, true);
+        // expressions expand once, on entering the tree (resolved-data model)
+        entry.update(
+                io.jcordis.loader.expr.OptionsEval.apply(options, tree.loader().evalScope()), true, true);
         return entry.id();
     }
 
@@ -96,7 +98,11 @@ public final class EntryGroup {
                     Entry entry = tree.store.get(id);
                     if (entry != null) {
                         // existing entry: replace options in full, restart only on config change
-                        entry.update(options, true, false);
+                        entry.update(
+                                io.jcordis.loader.expr.OptionsEval.apply(
+                                        options, tree.loader().evalScope()),
+                                true,
+                                false);
                     } else {
                         create(options);
                     }

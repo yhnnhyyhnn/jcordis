@@ -2,6 +2,11 @@
 
 ## 1.0.4-SNAPSHOT（未发布）
 
+### 新功能：配置表达式 + 可控制 Watcher
+
+- **白名单表达式求值**（js-expr 的安全对齐）：`${...}` 插值进 entry options——config 树与 inject/intercept/isolate 值叶子、`disabled`/`group` 布尔表达式（如 `${env.PROD == 'true'}`）；`expr/Evaluator` 固定小语法（属性链/`['含.键名']` 索引/比较/算术/逻辑/三元，JS 式弱类型），**无方法调用/反射/类型引用**；`Loader.evalScope()` 默认 `env`/`prop` 可整体替换
+- **`Hmr.watch` 返回 `Watcher`**（fs.watch 理念）：`pause`/`resume` 挂起与恢复变更投递，**pause 期间多次变更合并为一次触发**；`dispose` 注销；fiber 销毁自动清理
+
 ### cordis 2026-11 第三批上游对齐（`34c8ac5..b38ef58`，4 项移植）
 
 - **`RegistryService.replace(old, new)` 原地插件替换**（`74b7905`）：fiber 存活换血（新 body/inject/上下文重建/依赖重解析），旧引用经 aliases 转发（`has`/`get`/`delete` 直达替代者），发 `internal/replace` 事件

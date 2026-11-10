@@ -21,7 +21,7 @@ class PatternsTest {
         assertThat(options.id).isEqualTo("svc");
         assertThat(options.name).isEqualTo("feature");
         assertThat(options.config).isEqualTo(Map.of("enabled", true));
-        assertThat(options.disabled).isFalse();
+        assertThat(options.disabled).isEqualTo(false);
     }
 
     @Test
@@ -51,7 +51,7 @@ class PatternsTest {
 
         loader.execute(Command.TreeCommand.update(
                 "cmd", new EntryOptions.Builder().disabled(true).build(), null));
-        assertThat(loader.resolve("cmd").options.disabled).isTrue();
+        assertThat(loader.resolve("cmd").options.disabled).isEqualTo(true);
 
         loader.execute(Command.TreeCommand.remove("cmd"));
         assertThat(loader.store.containsKey("cmd")).isFalse();

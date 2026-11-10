@@ -14,8 +14,11 @@ public final class EntryOptions {
     public String id;
     public String name;
     public Object config;
-    public Boolean group;
-    public Boolean disabled;
+    /** Group marker; an expression string is evaluated on entry (OptionsEval). */
+    public Object group;
+    /** Disabled flag; an expression string is evaluated on entry (OptionsEval). */
+    public Object disabled;
+
     public Map<String, Object> inject;
     public Map<String, Object> intercept;
     public Map<String, Object> isolate;
@@ -116,8 +119,8 @@ public final class EntryOptions {
         private final String id;
         private final String name;
         private final Object config;
-        private final Boolean group;
-        private final Boolean disabled;
+        private final Object group;
+        private final Object disabled;
         private final Map<String, Object> inject;
         private final Map<String, Object> intercept;
         private final Map<String, Object> isolate;
@@ -126,8 +129,8 @@ public final class EntryOptions {
                 String id,
                 String name,
                 Object config,
-                Boolean group,
-                Boolean disabled,
+                Object group,
+                Object disabled,
                 Map<String, Object> inject,
                 Map<String, Object> intercept,
                 Map<String, Object> isolate) {

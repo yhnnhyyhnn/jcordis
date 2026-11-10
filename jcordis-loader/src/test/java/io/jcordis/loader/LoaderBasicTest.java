@@ -319,7 +319,7 @@ class LoaderBasicTest {
         Entry entry = loader.resolve("1");
         entry.fiber.disposeAsync().join();
 
-        assertThat(entry.options.disabled).isTrue();
+        assertThat(entry.options.disabled).isEqualTo(true);
     }
 
     @Test
